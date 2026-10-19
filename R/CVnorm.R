@@ -191,7 +191,7 @@ CVnorm <- function(object, bias=NULL, grouping=NULL, smoothGrouping=grouping,
     expected_counts <- .looExpected(as.matrix(expected_counts), counts, 
                                     as.matrix(smooth_obs_p), smooth_exp_p, 
                                     binBinProbs, bin_map, peak_p, cs, 
-                                    biasWeights, pseudoReads)
+                                    biasWeights, pseudoCount)
   }
   
   if(isTRUE(Z)){
