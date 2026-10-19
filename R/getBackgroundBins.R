@@ -20,6 +20,12 @@
 #'   number of bins for, in order: enrichment, GC and fragment length. By 
 #'   default, `bs=50` if `flbias` is not provided (mimicking chromVAR), and
 #'   `bs=c(30, 30, 6)` if it is.
+#' @param maxShare Optional maximum share that a peak can have in the 
+#'   expectation of its own background. If not NULL, the width of the kernel is
+#'   increased (up to `maxWidth` times `w`) for the bins that would otherwise 
+#'   exceed it, so that sparsely-populated bins draw more from their neighbors.
+#' @param maxWidthFactor The maximum factor by which `w` can be multiplied when 
+#'   `maxShare` is used.
 #' @param pseudo Optional pseudocount to be added. This should not be needed 
 #'   with standard workflows.
 #' @param verbose Whether to print processing info.
@@ -52,7 +58,8 @@
 #' counts_se <- getDummyData()$counts
 #' background <- getBackgroundBins(counts_se)
 getBackgroundBins <- function(x, bias=NULL, flbias=NULL, w=0.1, bs=NULL,
-                              pseudo=0, verbose=TRUE){
+                              maxShare=0.1, maxWidthFactor=4, pseudo=0, 
+                              verbose=TRUE){
   if(.isSElike(x)){
     if(is.null(bias)) bias <- rowData(x)$bias
     if(is.null(flbias)) flbias <- rowData(x)$flbias
@@ -122,7 +129,14 @@ getBackgroundBins <- function(x, bias=NULL, flbias=NULL, w=0.1, bs=NULL,
   bin_data <- do.call(expand.grid, grid_args)
 
   # bin-to-bin probability matrix
-  W <- dnorm(as.matrix(dist(bin_data)), 0, w)
+  D <- as.matrix(dist(bin_data))
+  W <- dnorm(D, 0, w)
+  
+  if(!is.null(maxShare)){
+    stopifnot(length(maxShare)==1 && maxShare>0 && maxShare<1)
+    stopifnot(length(maxWidthFactor)==1 && maxWidthFactor>=1)
+    W <- .adaptiveKernel(W, D, w, maxShare, maxWidthFactor, x, peak2bin)
+  }
   
   normalizer <- as.vector(W %*% binDensity)
   # Avoid division by zero for empty regions
@@ -216,3 +230,27 @@ sampleBackgroundPeaks <- function(background, niterations=50){
 }
 
 
+
+
+# Widens the gaussian kernel of the bins where a peak would otherwise make up
+# more than `maxShare` of the expectation of its own background.
+.adaptiveKernel <- function(W, D, w, maxShare, maxWidth, x, peak2bin){
+  B <- nrow(W)
+  fb <- factor(peak2bin, levels=seq_len(B))
+  ebin <- as.numeric(tapply(x, fb, sum))
+  emax <- as.numeric(tapply(x, fb, max))
+  ebin[is.na(ebin)] <- 0
+  emax[is.na(emax)] <- 0
+  share <- (diag(W) * emax) / as.vector(W %*% ebin)
+  todo <- which(emax>0 & share > maxShare)
+  for(u in todo){
+    m <- 1
+    Wu <- W[u,]
+    while(Wu[u]*emax[u]/sum(Wu*ebin) > maxShare && m < maxWidth){
+      m <- min(m*1.25, maxWidth)
+      Wu <- dnorm(D[u,], 0, w*m)
+    }
+    W[u,] <- Wu
+  }
+  W
+}

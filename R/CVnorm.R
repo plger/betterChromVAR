@@ -41,6 +41,16 @@
 #'   `pmax(useWidthAdj,width)`.
 #' @param enforceZeros Logical; whether to enforce that zero counts should 
 #'   remain zeroes after correction (ignored if `Z=TRUE`).
+#' @param pseudoCount A pseudocount, in reads, added to both the observed and 
+#'   expected counts when computing the bias factor. This shrinks towards 1 
+#'   (no correction) the factors of the bins whose neighborhood contains too 
+#'   few reads to estimate them.
+#' @param maxShare Passed to \code{\link{getBackgroundBins}}: the maximum share
+#'   that a peak can have in the expectation of its own background.
+#' @param loo Logical; whether to compute the expectation of each peak without 
+#'   the peak itself (leave-one-out). This is recommended to avoid correcting
+#'   away real signal from peaks that dominate their bias bin, but is a bit more 
+#'   memory-intensive.
 #' @author Pierre-Luc Germain
 #' @references
 #'   - Schep A.N., Wu B., Buenrostro J.D., Greenleaf W.J. (2017) chromVAR: 
@@ -64,8 +74,8 @@
 #' counts_se <- CVnorm(counts_se)
 CVnorm <- function(object, bias=NULL, grouping=NULL, smoothGrouping=grouping, 
                    shrinkMode=c("dampen", "qsmooth"), toAssay="corrected",
-                   bs=NULL, w=0.1, Z=FALSE, useWidthAdj=NULL,
-                   enforceZeros=TRUE){
+                   bs=NULL, w=0.1, Z=FALSE, useWidthAdj=NULL, loo=TRUE, 
+                   enforceZeros=TRUE, pseudoCount=1, maxShare=0.1){
   
   # input validity
   if(!isFALSE(useWidthAdj) && 
@@ -109,7 +119,7 @@ CVnorm <- function(object, bias=NULL, grouping=NULL, smoothGrouping=grouping,
     expectation2 <- useWidthAdj*expectation/pmax(wi, useWidthAdj)
   }
   background <- getBackgroundBins(expectation2, bias=bias, flbias=flbias, w=w, 
-                                  bs=bs, verbose=FALSE)
+                                  bs=bs, maxShare=maxShare, verbose=FALSE)
   bin_map <- background@peak2bin
   binBinProbs <- background@binBinProbs
   bin2peakMat <- sparseMatrix(i=bin_map, j=seq_along(expectation), 
@@ -123,9 +133,20 @@ CVnorm <- function(object, bias=NULL, grouping=NULL, smoothGrouping=grouping,
   # raw bias factors (B x S)
   smooth_obs_p <- binBinProbs %*% .fastColNorm(binCounts, cs=cs)
   smooth_exp_p <- as.numeric(binBinProbs %*% bin_p_expected)
-  bias_factor <- smooth_obs_p / smooth_exp_p
+  if(pseudoCount>0){
+    # ratio of the observed to the expected reads of the neighborhood (in each
+    # sample), with a pseudocount
+    smooth_obs_p <- as.matrix(smooth_obs_p)
+    bias_factor <- t((t(smooth_obs_p)*cs + pseudoCount) /
+                       (outer(cs, smooth_exp_p) + pseudoCount))
+  }else{
+    bias_factor <- smooth_obs_p / smooth_exp_p
+  }
   
   if(!inherits(counts, "sparseMatrix")) bias_factor <- as.matrix(bias_factor)
+  
+  # exponent applied, in the log-space, to the sample-specific bias (see below)
+  biasWeights <- 1
   
   # variance-based weighting (qsmooth logic)
   if(!is.null(smoothGrouping) && length(unique(smoothGrouping))>1){
@@ -151,6 +172,7 @@ CVnorm <- function(object, bias=NULL, grouping=NULL, smoothGrouping=grouping,
     MSB <- SSB / (n_groups - 1)
     
     weights <- MSW / (MSW + MSB + 1e-12)
+    if(shrinkMode == "dampen") biasWeights <- as.numeric(weights)
     
     if(shrinkMode == "qsmooth"){
       # Subtract the sample-specific noise (log_R - group_mean) 
@@ -165,6 +187,12 @@ CVnorm <- function(object, bias=NULL, grouping=NULL, smoothGrouping=grouping,
   
   # peak-level correction
   expected_counts <- (peak_p %*% t(cs)) * bias_factor[bin_map, ]
+  if(isTRUE(loo)){
+    expected_counts <- .looExpected(as.matrix(expected_counts), counts, 
+                                    as.matrix(smooth_obs_p), smooth_exp_p, 
+                                    binBinProbs, bin_map, peak_p, cs, 
+                                    biasWeights, pseudoReads)
+  }
   
   if(isTRUE(Z)){
     # Pearson residuals
@@ -193,4 +221,44 @@ CVnorm <- function(object, bias=NULL, grouping=NULL, smoothGrouping=grouping,
   
   assay(object, toAssay) <- out
   return(object)
+}
+
+
+# Leave-one-out adjustment of the expected counts of CVnorm.
+.looExpected <- function(expected, counts, obs, exp_u, P, bin_map, peak_p, cs,
+                         biasWeights=1, pseudoCount=1, chunkSize=200L){
+  Puu <- as.numeric(Matrix::diag(P))[bin_map]
+  eu <- as.numeric(exp_u)[bin_map]
+  eloo <- (eu - Puu*peak_p)/(1-peak_p)
+  # peaks that are the only source of their expectation are left unchanged
+  ok <- is.finite(eloo) & eloo > 0 & eu > 0
+  bw <- if(length(biasWeights)>1) biasWeights[bin_map] else 
+    rep(biasWeights, length(bin_map))
+  # expectation term (in chunks of samples, to limit the memory usage)
+  for(cols in split(seq_along(cs), ceiling(seq_along(cs)/chunkSize))){
+    a <- outer(eu, cs[cols]) + pseudoCount
+    b <- outer(eloo, cs[cols]) + pseudoCount
+    d <- log(a) - log(b)
+    d[!(ok & is.finite(d))] <- 0
+    expected[,cols] <- expected[,cols] * exp(d*bw)
+  }
+  # non-zero entries
+  if(inherits(counts, "sparseMatrix")){
+    tr <- as(counts, "TsparseMatrix")
+    i <- tr@i + 1L
+    j <- tr@j + 1L
+    x <- tr@x
+  }else{
+    w <- which(counts>0, arr.ind=TRUE)
+    i <- w[,1]
+    j <- w[,2]
+    x <- counts[w]
+  }
+  o <- obs[cbind(bin_map[i], j)]
+  fr <- x/cs[j]
+  oloo <- (o - Puu[i]*fr)/(1-fr)
+  dObs <- log(oloo*cs[j] + pseudoCount) - log(o*cs[j] + pseudoCount)
+  dObs[!is.finite(dObs)] <- 0
+  expected[cbind(i,j)] <- expected[cbind(i,j)] * exp(dObs*bw[i])
+  expected
 }

@@ -15,7 +15,10 @@ CVnorm(
   w = 0.1,
   Z = FALSE,
   useWidthAdj = NULL,
-  enforceZeros = TRUE
+  loo = TRUE,
+  enforceZeros = TRUE,
+  pseudoCount = 1,
+  maxShare = 0.1
 )
 }
 \arguments{
@@ -63,8 +66,21 @@ width is greater than 10\% of the median width. If TRUE, will adjust for
 \code{pmax(200L,width)}. If an integer scalar, will adjust for
 \code{pmax(useWidthAdj,width)}.}
 
+\item{loo}{Logical; whether to compute the expectation of each peak without
+the peak itself (leave-one-out). This is recommended to avoid correcting
+away real signal from peaks that dominate their bias bin, but is a bit more
+memory-intensive.}
+
 \item{enforceZeros}{Logical; whether to enforce that zero counts should
 remain zeroes after correction (ignored if \code{Z=TRUE}).}
+
+\item{pseudoCount}{A pseudocount, in reads, added to both the observed and
+expected counts when computing the bias factor. This shrinks towards 1
+(no correction) the factors of the bins whose neighborhood contains too
+few reads to estimate them.}
+
+\item{maxShare}{Passed to \code{\link{getBackgroundBins}}: the maximum share
+that a peak can have in the expectation of its own background.}
 }
 \value{
 If \code{object} is a matrix, then a matrix of corrected counts of the
