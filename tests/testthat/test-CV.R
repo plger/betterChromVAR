@@ -26,17 +26,6 @@ test_that("dgcMatrix supported", {
 
 bg <- getBackgroundBins(counts)
 
-test_that("shrinkage works", {
-  bg <- computeBackgrounds(counts, bg, grouping=counts$groups,
-                           shrinkage="average")
-  dev <- computeDeviationsAnalytic(counts, bg, motifMatches)
-  checkDevOutput(dev)
-  bg <- computeBackgrounds(counts, bg, grouping=counts$groups,
-                           shrinkage="smooth")
-  dev <- computeDeviationsAnalytic(counts, bg, motifMatches)
-  checkDevOutput(dev)
-})
-
 test_that("multithreading works", {
   bp <- SnowParam(2)
   dev <- betterChromVAR(counts, motifMatches, grouping=counts$groups,

@@ -66,11 +66,11 @@ and achieves higher precision and much higher efficiency through two changes:
 \enumerate{
 \item working with expected background sampling mean and variances, rather than
 actual permutations, and 2) computing expectations and variance at the level
-of bias bins, instead of in the peak-space. The function additionally
-includes experimental bias shrinkage options, the possibility to handle
-annotations that are not binary (e.g. probability scores) and a third
+of bias bins, instead of in the peak-space. The function can additionally
+handles non-binary annotations (e.g. probability scores), a third
 bias dimension (fragment length bias, which should be stored in
-\code{rowData(object)$flbias} see \code{\link{getBackgroundBins}} for details).
+\code{rowData(object)$flbias} see \code{\link{getBackgroundBins}} for details),
+an adaptive kernel width, and ridge-based decorrelation of the motifs.
 }
 }
 \examples{

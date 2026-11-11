@@ -8,6 +8,7 @@
   partial weights to weak matches according to their score.
 
 ## Changes
+* Removed the bias shrinkage options -- see downstream smoothing instead.
 * The bin-to-bin background probabilities of `getBackgroundBins()` are now 
   balanced (`tol` argument; `tol=NULL` restores the earlier behavior).
   This slightly changes the results, removing a bias in mean z.

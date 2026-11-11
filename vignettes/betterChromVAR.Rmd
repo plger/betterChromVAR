@@ -43,12 +43,10 @@ with an analytical solution and computing expectations and variance at the
 level of bias bins, instead of in the peak-space (for more detail, see 
 [@Wang2026]).
 
-In addition, `r Biocpkg("betterChromVAR")` includes a few additions,
-such as simpler weighted expectations, bias shrinkage, and an ATAC-seq
-normalization method based on the chromVAR logic. Importantly, however,
-not all functionalities of chromVAR have been reimplemented here:
-`r Biocpkg("betterChromVAR")` chiefly focuses on the key task of
-efficiently computing motif deviations.
+In addition, `r Biocpkg("betterChromVAR")` includes new features,
+such as simpler weighted expectations, decorrelation and smoothing of 
+motif scores, and an ATAC-seq normalization method based on the 
+chromVAR logic.
 
 # Installing `betterChromVAR`
 
