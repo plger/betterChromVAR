@@ -241,8 +241,51 @@ addGCBias <- function(object, genome){
 
 # Null variance of the motif sums (motifs x cells) with the finite-population 
 # correction; V is the bins x cells matrix of background variances.
-.fpcVariance <- function(annotations, background, V){
-  as.matrix(Matrix::crossprod(.fpcStats(annotations, background)$coef, V))
+.fpcVariance <- function(annotations, background, V, st=NULL){
+  if(is.null(st)) st <- .fpcStats(annotations, background)
+  as.matrix(Matrix::crossprod(st$coef, V))
+}
+
+# Quantities that depend only on the annotations and the bins (and not on the
+# cells): the output of `.fpcStats` and the global expectation of each motif.
+# They are computed once and passed on (as `st`), rather than for each chunk
+# of cells.
+.annotationStats <- function(annotations, background, 
+                             expectation=background@expectation){
+  st <- .fpcStats(annotations, background)
+  st$globalAvg <- as.vector(Matrix::crossprod(annotations, expectation))
+  st
+}
+
+# Whether annotations are sparse enough for sparse algebra to be worth it
+.isSparseAnnotation <- function(x, maxDensity=0.2){
+  inherits(x, "sparseMatrix") && Matrix::nnzero(x)/prod(dim(x)) < maxDensity
+}
+
+# Splits the rows of x in blocks which, once dense, have at most `blockCells`
+# values
+.rowBlocks <- function(x, blockCells=2.5e7){
+  i <- seq_len(nrow(x))
+  unname(split(i, ceiling(i/max(1L, floor(blockCells/ncol(x))))))
+}
+
+# Motif sums, i.e. t(annotations) %*% counts, as a dense matrix (motifs x 
+# cells). Sparse annotations (e.g. binary matches) use a sparse cross-product.
+# For annotations that are not sparse (e.g. graded matches), this is slow and
+# memory-hungry, and the annotations are instead processed as dense blocks of 
+# rows.
+.annotCrossprod <- function(annotations, counts, maxDensity=0.2, 
+                            blockCells=2.5e7){
+  if(!inherits(annotations, "sparseMatrix") || 
+     .isSparseAnnotation(annotations, maxDensity))
+    return(as.matrix(Matrix::crossprod(annotations, counts)))
+  annotations <- .asDgC(annotations)
+  res <- Reduce("+", lapply(.rowBlocks(annotations, blockCells), function(i){
+    as.matrix(Matrix::crossprod(as.matrix(annotations[i,,drop=FALSE]),
+                                counts[i,,drop=FALSE]))
+  }))
+  dimnames(res) <- list(colnames(annotations), colnames(counts))
+  res
 }
 
 # Effective number of peaks of each motif: the number of peaks (N) of a motif 
@@ -257,8 +300,9 @@ addGCBias <- function(object, genome){
 # counts being taken as proportional to their mean). Without overlap between 
 # a motif's peaks and their expectation Neff = N; with an even spread of the
 # motif's peaks across bins, Neff = N(1-N/P).
-.effectiveN <- function(annotations, background, expectation, fpc=TRUE){
-  st <- .fpcStats(annotations, background)
+.effectiveN <- function(annotations, background, expectation, fpc=TRUE,
+                        st=NULL){
+  if(is.null(st)) st <- .fpcStats(annotations, background)
   bin2peak <- sparseMatrix(i=background@peak2bin, j=seq_along(background@peak2bin),
                            dims=c(length(background@binDensity), nrow(annotations)))
   Eb <- as.numeric(background@binBinProbs %*% (bin2peak %*% expectation))

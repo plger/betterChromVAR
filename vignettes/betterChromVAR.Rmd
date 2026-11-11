@@ -298,11 +298,47 @@ cor(rowData(dev)$variability, motifRel$reliability)
 ```
 
 Two motifs can have the same reliability while having very different 
-variability, or the converse. Both are therefore relevant information in 
-selecting useful motifs.
+variability (e.g. a reliably quantified motif accessibility that does not vary
+much), or the converse. Both are therefore relevant information in selecting 
+useful motifs.
 
 
-## Smoothing the deviations of single cells across neighboring cells
+## Decorrelating motifs that share peaks
+
+Since peaks contain multiple motifs, a change in the accessibility of the 
+binding sites of one factor also affects the scores of the motifs that tend to 
+be found in the same peaks, and this is especially strong for motifs from the 
+same family. The `ridge` argument can be used to reduce this: the excess counts 
+of the motifs are then deconvoluted using the overlap between motifs with a ridge
+penalty:
+
+```{r ridge}
+dev2 <- betterChromVAR(counts, motifMatches, ridge=2)
+```
+
+Smaller values of `ridge` decorrelate more strongly, and `ridge=Inf` (or the
+default `NULL`) gives the standard results. Based on our benchmarks, mild 
+values (1 to 3) are recommended: they reduce the number of motifs with an 
+apparent signal without substantially weakening that of the perturbed factor.
+
+This is based on shared peaks, which are typically underestimated by common 
+thresholds: similar motifs often match different peaks that however contain
+weaker sites of the other motif. For this reason, the decorrelation works best 
+with annotations that also capture the weaker sites. `getGradedMatches()` is a 
+wrapper around `r Biocpkg("motifmatchr")` which gives matches below the usual 
+threshold a partial weight according to their score, and can be used as follows:
+
+```{r graded, eval=FALSE}
+# given a list of motifs `pwms` and the corresponding genome:
+gradedMatches <- getGradedMatches(pwms, counts, genome=genome)
+dev2 <- betterChromVAR(counts, gradedMatches, ridge=3)
+```
+
+While the two can be used independently, graded matches alone did not offer much
+improvement in our hands, and because they are much less sparse than standard 
+(i.e. binary) ones, they make the process heavier.
+
+# Smoothing the deviations of single cells across neighboring cells
 
 The deviations of individual cells are very noisy: for most motifs, almost all
 of the cell-to-cell variation is sampling noise (as estimated with 

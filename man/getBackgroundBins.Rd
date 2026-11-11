@@ -13,6 +13,7 @@ getBackgroundBins(
   maxShare = 0.1,
   maxWidthFactor = 4,
   pseudo = 0,
+  tol = 0.001,
   verbose = TRUE
 )
 }
@@ -49,6 +50,11 @@ exceed it, so that sparsely-populated bins draw more from their neighbors.}
 
 \item{pseudo}{Optional pseudocount to be added. This should not be needed
 with standard workflows.}
+
+\item{tol}{The tolerance of the balancing of the bin-to-bin probabilities
+i.e. the maximum deviation tolerated from 1 of the total weight with which
+each bin is used in the background of the others. Use \code{tol=NULL} to
+disable the balancing.}
 
 \item{verbose}{Whether to print processing info.}
 }

@@ -11,6 +11,7 @@ betterChromVAR(
   nthreads = NULL,
   verbose = FALSE,
   fpc = TRUE,
+  ridge = NULL,
   ...
 )
 }
@@ -39,6 +40,11 @@ use, or a \code{BiocParallelParam} object.}
 \item{fpc}{Logical; whether to apply the finite-population correction to the
 null variance used for the z-scores (default TRUE, see
 \code{\link{computeDeviationsAnalytic}}).}
+
+\item{ridge}{An optional positive number, enabling the decorrelation of
+motifs that share peaks (smaller values decorrelate more strongly; values
+of 1 to 3 are recommended). By default (NULL), motifs are not
+decorrelated. See \code{\link{computeDeviationsAnalytic}} for details.}
 
 \item{...}{Passed to \code{\link{getBackgroundBins}}.}
 }

@@ -12,7 +12,8 @@ computeDeviationsAnalytic(
   retSE = TRUE,
   compute = c("deviations", "z", "variability"),
   denominator = c("global", "local", "none"),
-  fpc = TRUE
+  fpc = TRUE,
+  ridge = NULL
 )
 }
 \arguments{
@@ -42,6 +43,11 @@ or 'none' (denominator of 1). 'global' (default) is recommended.}
 \item{fpc}{Logical, whether to apply finite population correction (see
 details below). Disable (\code{fpc=FALSE}) to reproduce the behavior of the
 original chromVAR.}
+
+\item{ridge}{An optional positive number, enabling the decorrelation of
+motifs that share peaks (see details). Smaller values decorrelate more
+strongly; values of 1 to 3 are recommended. If NULL (default) or \code{Inf},
+motifs are not decorrelated.}
 }
 \value{
 A SummarizedExperiment (or a list if \code{retSE=FALSE}).
@@ -59,6 +65,18 @@ the motif. This is negligilbe for motifs matching few peaks, and especially
 affects prevalent motifs concentrated in a few background bins (e.g. GC-rich
 motifs). The correction typically has little effect on cell ranking within a
 motif.
+
+Since peaks carry multiple motifs and some motif families are very similar,
+the deviations of motifs tend to be correlated, sometimes highly so. If
+\code{ridge} is given, the excess counts of the motifs are deconvoluted using the
+overlap between them (after background subtraction, and weighted by the
+expected accessibility of the peaks), with a ridge penalty proportional to
+\code{ridge} and to the size of each motif. Motifs that do not share peaks with
+others are unaffected, and the signal of nearly identical motifs is split
+between them. Note that this only removes what is due to shared peaks, and
+that strong decorrelation (e.g. \code{ridge<1}) reduces the signal of the motifs.
+The decorrelation additionally benefits from annotations that also capture
+weak matches (see \code{\link{getGradedMatches}}).
 }
 \examples{
 attach(getDummyData())

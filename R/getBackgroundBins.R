@@ -28,6 +28,10 @@
 #'   `maxShare` is used.
 #' @param pseudo Optional pseudocount to be added. This should not be needed 
 #'   with standard workflows.
+#' @param tol The tolerance of the balancing of the bin-to-bin probabilities 
+#'   i.e. the maximum deviation tolerated from 1 of the total weight with which 
+#'   each bin is used in the background of the others. Use `tol=NULL` to 
+#'   disable the balancing.
 #' @param verbose Whether to print processing info.
 #' 
 #' @details
@@ -59,7 +63,7 @@
 #' background <- getBackgroundBins(counts_se)
 getBackgroundBins <- function(x, bias=NULL, flbias=NULL, w=0.1, bs=NULL,
                               maxShare=0.1, maxWidthFactor=4, pseudo=0, 
-                              verbose=TRUE){
+                              tol=1e-3, verbose=TRUE){
   if(.isSElike(x)){
     if(is.null(bias)) bias <- rowData(x)$bias
     if(is.null(flbias)) flbias <- rowData(x)$flbias
@@ -83,6 +87,7 @@ getBackgroundBins <- function(x, bias=NULL, flbias=NULL, w=0.1, bs=NULL,
   }
   bs <- as.integer(bs)
   stopifnot(all(bs>=1))
+  stopifnot(is.null(tol) || (is.numeric(tol) && length(tol)==1 && tol>0))
   if(verbose) 
     message("Creating ", paste(bs,collapse="*"),"=",prod(bs)," bias bins ",
             "and computing their sampling distances")
@@ -145,6 +150,9 @@ getBackgroundBins <- function(x, bias=NULL, flbias=NULL, w=0.1, bs=NULL,
   
   binBinProbs[binBinProbs < 1e-6] <- 0
   binBinProbs <- as(binBinProbs, "sparseMatrix")
+  
+  if(!is.null(tol))
+    binBinProbs <- .balanceBinProbs(binBinProbs, binDensity, tol)
     
   new("bcvBackground",
       dims = bs,
@@ -231,7 +239,6 @@ sampleBackgroundPeaks <- function(background, niterations=50){
 
 
 
-
 # Widens the gaussian kernel of the bins where a peak would otherwise make up
 # more than `maxShare` of the expectation of its own background.
 .adaptiveKernel <- function(W, D, w, maxShare, maxWidth, x, peak2bin){
@@ -253,4 +260,53 @@ sampleBackgroundPeaks <- function(background, niterations=50){
     W[u,] <- Wu
   }
   W
+}
+
+# Balances the bin-to-bin probabilities. P[b,b'] is the probability with which 
+# each *peak* of bin b' is drawn as background of the peaks of bin b, so that
+# sum_b' P[b,b'] n[b'] = 1 (n: number of peaks per bin). If peaks are not 
+# drawn as background as often as they are targets, i.e. if 
+# sum_b n[b] P[b,b'] differs from 1, the expectation of a random set of peaks 
+# differs from its observed counts. We therefore look for P' = u P v (u, v 
+# being vectors scaling the rows and the columns) satisfying both conditions,
+# by iterative proportional scaling (Sinkhorn-Knopp), stopping when the 
+# column condition is within `tol` of 1 (at which point the row condition is 
+# met exactly). Empty bins are left out (they are neither targets nor 
+# background).
+#' @importFrom Matrix t Diagonal
+.balanceBinProbs <- function(P, n, tol, maxit=5000L){
+  ok <- which(n>0)
+  Pm <- .asDgC(P[ok,ok,drop=FALSE])
+  tPm <- Matrix::t(Pm)
+  nn <- n[ok]
+  u <- v <- rep(1, length(ok))
+  converged <- FALSE
+  for(i in seq_len(maxit)){
+    s <- as.numeric(Pm %*% (v*nn))
+    if(!all(is.finite(1/s)) || any(s<=0)) break
+    u <- 1/s
+    cs <- as.numeric(tPm %*% (nn*u))
+    if(!all(is.finite(1/cs)) || any(cs<=0)) break
+    err <- max(abs(v*cs-1))
+    if(err < tol){
+      converged <- TRUE
+      break
+    }
+    v <- 1/cs
+  }
+  if(!converged){
+    if(i<maxit){
+      warning("The balancing of the bin-to-bin probabilities failed; they ",
+              "were left unchanged.")
+      return(P)
+    }
+    warning("The bin-to-bin probabilities could not be balanced to the ",
+            "requested tolerance in ", maxit, " iterations (maximum ",
+            "deviation: ", signif(err,2), ").")
+    u <- 1/as.numeric(Pm %*% (v*nn))
+  }
+  uu <- vv <- rep(1, nrow(P))
+  uu[ok] <- u
+  vv[ok] <- v
+  as(Diagonal(x=uu) %*% P %*% Diagonal(x=vv), "CsparseMatrix")
 }

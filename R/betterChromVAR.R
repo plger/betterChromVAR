@@ -25,6 +25,10 @@
 #' @param fpc Logical; whether to apply the finite-population correction to the
 #'   null variance used for the z-scores (default TRUE, see
 #'   \code{\link{computeDeviationsAnalytic}}).
+#' @param ridge An optional positive number, enabling the decorrelation of 
+#'   motifs that share peaks (smaller values decorrelate more strongly; values
+#'   of 1 to 3 are recommended). By default (NULL), motifs are not 
+#'   decorrelated. See \code{\link{computeDeviationsAnalytic}} for details.
 #' @param ... Passed to \code{\link{getBackgroundBins}}.
 #' @author Pierre-Luc Germain
 #' 
@@ -65,7 +69,7 @@
 #' # bg <- computeBackgrounds(counts, bg)
 #' # dev <- computeDeviationsAnalytic(counts, bg, motifMatches)
 betterChromVAR <- function(object, annotations, grouping=NULL, nthreads=NULL,
-                           verbose=FALSE, fpc=TRUE, ...){
+                           verbose=FALSE, fpc=TRUE, ridge=NULL, ...){
   
   stopifnot(.isSElike(object))
   stopifnot(nrow(object) == nrow(annotations))
@@ -87,21 +91,31 @@ betterChromVAR <- function(object, annotations, grouping=NULL, nthreads=NULL,
   bg <- getBackgroundBins(expectation, bias=bias, flbias=flbias, 
                           verbose=verbose, ...)
   
+  # what depends only on the annotations is computed once, rather than for
+  # each chunk of cells
+  st <- .annotationStats(annotations, bg, expectation)
+  if(!is.null(ridge)){
+    if(verbose) message("Computing the overlap between motifs")
+    ridge <- .ridgeOperator(annotations, bg, ridge, expectation=expectation,
+                            st=st)
+  }
+
   ngroups <- length(levels(grouping))
                     
   BPPARAM <- .bpFromThreads(nthreads, progressbar=(verbose && ngroups>1))
 
   i <- seq_len(ncol(object))
   counts <- assay(object, "counts")
+  depth <- NULL
+  if(is.numeric(object$depth)) depth <- object$depth
   if((nW <- BiocParallel::bpnworkers(BPPARAM))>1 && ncol(counts) > 100){
     if(verbose) message("Computing backgrounds and deviations")
     chunks <- split(i, cut(i, nW, labels=FALSE))
     res <- bplapply(chunks, BPPARAM=BPPARAM, function(i){
       bg <- computeBackgrounds(counts[,i], bg[,i], expectation=expectation,
                                verbose=FALSE)
-      computeDeviationsAnalytic(object[,i], bg, annotations, verbose=FALSE,
-                                retSE=FALSE, compute=c("deviations","z"),
-                                fpc=fpc)
+      .computeDeviations(counts[,i], bg, annotations, st=st, depth=depth[i],
+                         compute=c("deviations","z"), fpc=fpc, ridge=ridge)
     })
     res <- list(deviations=Reduce(cbind2,
                                   lapply(res, function(x) x$deviations)),
@@ -112,13 +126,14 @@ betterChromVAR <- function(object, annotations, grouping=NULL, nthreads=NULL,
     bg <- computeBackgrounds(counts, bg, expectation=expectation,
                              verbose=verbose)
     if(verbose) message("Computing deviations")
-    res <- computeDeviationsAnalytic(object, bg, annotations, verbose=verbose,
-                                     retSE=FALSE, compute=c("deviations","z"),
-                                     fpc=fpc)
+    res <- .computeDeviations(counts, bg, annotations, st=st, depth=depth,
+                              compute=c("deviations","z"), fpc=fpc,
+                              ridge=ridge, verbose=verbose)
   }
-  
+  res <- res[c("deviations","z","total")]
+
   d <- cbind(data.frame(N=colSums(annotations),
-                        Neff=.effectiveN(annotations, bg, expectation, fpc),
+                        Neff=.effectiveN(annotations, bg, expectation, fpc, st=st),
                         total=res$total),
              computeMotifVariability(res$z))
 

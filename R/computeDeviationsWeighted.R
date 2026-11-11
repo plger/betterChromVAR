@@ -97,16 +97,17 @@ computeDeviationsWeighted <- function(weightedMotifCounts, unweightedPeakCounts,
                               dims = c(nrow(bg@binBinProbs), length(binMap)))
   motifBinCounts <- Matrix::t(annotations) %*% Matrix::t(bin2peakMat)
   motif_bg_exp_unweighted <- as.matrix(motifBinCounts %*% bg@E)
-  unwMoCounts <- as.matrix(Matrix::t(annotations) %*% unweightedPeakCounts)
+  unwMoCounts <- .annotCrossprod(annotations, unweightedPeakCounts)
   unwMoCounts <- Matrix::rowMeans(.fastColNorm(unwMoCounts))*sum(unwMoCounts)
   fg <- sum(weightedMotifCounts)*Matrix::rowMeans(.fastColNorm(weightedMotifCounts))
   motif_sf <- fg / unwMoCounts
   motif_bg_exp <- motif_bg_exp_unweighted * motif_sf
   
   numerator <- weightedMotifCounts - motif_bg_exp
+  st <- .fpcStats(annotations, bg)
   
   if(isTRUE(fpc)){
-    bg_variance_scaled <- .fpcVariance(annotations, bg, bg@V) * (motif_sf^2)
+    bg_variance_scaled <- .fpcVariance(annotations, bg, bg@V, st=st) * (motif_sf^2)
   }else{
     bg_variance_scaled <- as.matrix(motifBinCounts %*% bg@V) * (motif_sf^2)
   }
@@ -125,7 +126,7 @@ computeDeviationsWeighted <- function(weightedMotifCounts, unweightedPeakCounts,
   if(!isTRUE(retSE)) return(a)
     
   d <- data.frame(N=Matrix::colSums(annotations),
-                  Neff=.effectiveN(annotations, bg, bg@expectation, fpc))
+                  Neff=.effectiveN(annotations, bg, bg@expectation, fpc, st=st))
   
   .packageDevSE(a, SummarizedExperiment(list(), colData=CD),motifCD, d)
 }

@@ -1,3 +1,18 @@
+# betterChromVAR 1.1.14
+
+## New features
+* `ridge` argument of `betterChromVAR()` and `computeDeviationsAnalytic()`: 
+  optional decorrelation of the motifs that share peaks (ridge deconvolution 
+  based on the overlap between motifs after background subtraction).
+* `getGradedMatches()`: graded (instead of binary) motif matches, giving
+  partial weights to weak matches according to their score.
+
+## Changes
+* The bin-to-bin background probabilities of `getBackgroundBins()` are now 
+  balanced (`tol` argument; `tol=NULL` restores the earlier behavior).
+  This slightly changes the results, removing a bias in mean z.
+* Minor gains in efficiency.
+
 # betterChromVAR 1.1.13
 * added pseudoCount and `loo` to make CVnorm more robust.
 * added adaptive kernel width
