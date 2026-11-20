@@ -8,26 +8,29 @@
 \alias{motifs}
 \alias{didevs}
 \title{NR3C1example}
-\description{
-A small example dataset of ATAC-seq data upon ligand-based activation of the
-glucocorticoid receptor (GCR, encoded by the NR3C1 gene) in A549 cells
-(a subset of the data from McDowell et al., 2018: three control and three
-treated samples). Loading it (\code{data(NR3C1example)}) provides the following objects:
-}
-\details{
+\format{
+Four objects:
 \itemize{
-\item \code{peakSE}: a \code{RangedSummarizedExperiment} of peak counts (assay \code{counts}),
-with a \code{bias} column in the \code{rowData} and the \code{group} and \code{depth} columns in
-the \code{colData}.
+\item \code{peakSE}: a \code{RangedSummarizedExperiment} of 19,143 peaks by 6 samples, with
+peak counts (assay \code{counts}), a \code{bias} column in the \code{rowData} and the
+\code{group} and \code{depth} columns in the \code{colData}.
+\item \code{motifMatches}: a \code{RangedSummarizedExperiment} of 19,143 peaks by 29
+motifs, with a logical assay (\code{motifMatches}) indicating the matches of
+each motif in each peak of \code{peakSE}.
 \item \code{motifs}: a \code{PFMatrixList} of three motifs (GCR, JUND and CTCFL), for use
-with functions that need the motif themselves
+with functions that need the motifs themselves
 (e.g. \code{\link{exploreMotifInteraction}}).
 \item \code{didevs}: a list with the output of
 \code{\link{exploreMotifInteraction}} for the pairs GCR-JUND and GCR-CTCFL
 (precomputed on the hg38 genome, which is needed to run it).
-\item \code{motifMatches}: a \code{RangedSummarizedExperiment} with a logical assay
-(\code{motifMatches}) of the matches of 29 motifs in each peak of \code{peakSE}.
 }
+}
+\description{
+A small example dataset of ATAC-seq data upon ligand-based activation of the
+glucocorticoid receptor (GCR, encoded by the NR3C1 gene) in A549 cells
+(a subset of the data from McDowell et al., 2018: three control and three
+treated samples). Loading it (\code{data(NR3C1example)}) provides four objects
+(see Format).
 }
 \examples{
 data(NR3C1example)
