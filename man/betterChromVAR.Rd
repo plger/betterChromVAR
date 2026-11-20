@@ -11,6 +11,7 @@ betterChromVAR(
   nthreads = NULL,
   verbose = FALSE,
   fpc = TRUE,
+  ridge = NULL,
   ...
 )
 }
@@ -40,6 +41,11 @@ use, or a \code{BiocParallelParam} object.}
 null variance used for the z-scores (default TRUE, see
 \code{\link{computeDeviationsAnalytic}}).}
 
+\item{ridge}{An optional positive number, enabling the decorrelation of
+motifs that share peaks (smaller values decorrelate more strongly; values
+of 1 to 3 are recommended). By default (NULL), motifs are not
+decorrelated. See \code{\link{computeDeviationsAnalytic}} for details.}
+
 \item{...}{Passed to \code{\link{getBackgroundBins}}.}
 }
 \value{
@@ -48,7 +54,7 @@ z-scores for each motif/sample. The rowData additionally contains the
 number of motif matches and their variability.
 }
 \description{
-A fast, analytic implementation of \code{chromVAR}.
+A fast, analytic implementation of (and improvement over) \code{chromVAR}.
 This is a wrapper around the \code{\link{getBackgroundBins}},
 \code{\link{computeBackgrounds}}, and \code{\link{computeDeviationsAnalytic}}
 steps. It additionally allows for multithreading. For more control or
@@ -60,11 +66,11 @@ and achieves higher precision and much higher efficiency through two changes:
 \enumerate{
 \item working with expected background sampling mean and variances, rather than
 actual permutations, and 2) computing expectations and variance at the level
-of bias bins, instead of in the peak-space. The function additionally
-includes experimental bias shrinkage options, the possibility to handle
-annotations that are not binary (e.g. probability scores) and a third
+of bias bins, instead of in the peak-space. The function can additionally
+handles non-binary annotations (e.g. probability scores), a third
 bias dimension (fragment length bias, which should be stored in
-\code{rowData(object)$flbias} see \code{\link{getBackgroundBins}} for details).
+\code{rowData(object)$flbias} see \code{\link{getBackgroundBins}} for details),
+an adaptive kernel width, and ridge-based decorrelation of the motifs.
 }
 }
 \examples{

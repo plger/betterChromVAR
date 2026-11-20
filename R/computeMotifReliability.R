@@ -126,5 +126,5 @@ computeMotifReliability <- function(dev, kappa=1, cellWeights=TRUE,
   m2 <- rowSums(e^2)/n
   kurtosis <- (rowSums(e^4)/n)/m2^2
   se_ln_var <- sqrt((kurtosis - (n-3)/n)/(n-1))
-  pnorm(log(pmax(m2*n/(n-1), 1e-16))/se_ln_var, lower.tail=FALSE)
+  stats::pnorm(log(pmax(m2*n/(n-1), 1e-16))/se_ln_var, lower.tail=FALSE)
 }

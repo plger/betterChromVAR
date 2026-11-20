@@ -9,8 +9,6 @@ computeBackgrounds(
   bins,
   grouping = NULL,
   expectation = NULL,
-  shrinkage = c("none", "average", "smooth"),
-  sigma = 1,
   verbose = FALSE
 )
 }
@@ -22,24 +20,15 @@ computeBackgrounds(
 \code{\link{getBackgroundBins}}.}
 
 \item{grouping}{An optional factor or vector coercible to a factor indicating
-the groupings of the columns of \code{object}. This is optionally used to 1)
+the groupings of the columns of \code{object}. This is optionally used to
 compute the base expectation such that rare cell types are given as much
-weight as abundant ones, and 2) apply shrinkage (if \code{shrinkage!="none"})
-on a per-grouping fashion. In single-cell data, the grouping can for
+weight as abundant ones. In single-cell data, the grouping can for
 instance be the interaction of samples and cell types. (The name of a
 colData column of \code{object} can also be provided.)}
 
 \item{expectation}{Optional vector of length equal to \code{nrow(object)}
 giving the expected counts. If NULL, defaults to mean counts (eventually
 grouped, see \code{grouping} and \code{\link{getExpectation}}).}
-
-\item{shrinkage}{The method to use to shrink background (i.e. bias) bin
-frequencies. Either "average" (shrinks towards the bin's average across
-cells/samples of the same group), "smooth" (per-sample 2D smoothing over
-the bin matrix, somewhat redundant with \code{w}), or "none" (default).}
-
-\item{sigma}{Sigma parameter for the 2D smoothing. Ignored unless
-\code{shrinkage="smooth"}.}
 
 \item{verbose}{Logical; whether to output progress messages.}
 }

@@ -36,3 +36,61 @@ test_that("analytic background SD matches sampled background sets", {
   r <- backgroundSDratio(as(simulateCounts(0.05, 2000, 200), "CsparseMatrix"))
   expect_lt(abs(median(r)-1), 0.03)
 })
+
+test_that("the bin-to-bin probabilities are balanced", {
+  counts <- simulateCounts(200, 4000, 6)
+  bias <- runif(nrow(counts))
+  getBins <- function(...) getBackgroundBins(counts, bias=bias, bs=20, 
+                                             verbose=FALSE, ...)
+  # row sums (the weights of the background of each bin) and column sums (the 
+  # weights with which each bin is used in the background of others)
+  sums <- function(bg){
+    n <- bg@binDensity
+    list(rows=as.numeric(bg@binBinProbs %*% n)[n>0],
+         cols=as.numeric(Matrix::crossprod(bg@binBinProbs, n))[n>0])
+  }
+  s <- sums(getBins())
+  expect_lt(max(abs(s$rows-1)), 1e-6)
+  expect_lt(max(abs(s$cols-1)), 1e-3)
+  expect_lt(max(abs(sums(getBins(tol=1e-4))$cols-1)), 1e-4)
+  # without balancing, the adaptive kernel leaves them unbalanced
+  s0 <- sums(getBins(tol=NULL))
+  expect_lt(min(s0$cols), 0.5)
+  # also without adaptive kernel
+  expect_lt(min(sums(getBins(maxShare=NULL, tol=NULL))$cols), 0.8)
+  s <- sums(getBins(maxShare=NULL))
+  expect_lt(max(abs(s$rows-1)), 1e-4)
+  expect_lt(max(abs(s$cols-1)), 1e-3)
+  expect_error(getBins(tol=-1))
+  expect_error(getBins(tol=c(1e-3, 1e-4)))
+  expect_warning(getBins(tol=1e-12), "could not be balanced")
+  # the sampling of background peaks still works
+  expect_equal(dim(sampleBackgroundPeaks(getBins(), niterations=3)), 
+               c(nrow(counts), 3))
+})
+
+test_that("the balancing and the ratio correction remove the bias of random sets", {
+  counts <- simulateCounts(200, 4000, 6)
+  bias <- runif(nrow(counts))
+  nSets <- 60
+  sets <- sparseMatrix(i=unlist(lapply(seq_len(nSets), function(i) 
+                                       sample.int(nrow(counts), 1500))),
+                       j=rep(seq_len(nSets), each=1500), x=1,
+                       dims=c(nrow(counts), nSets))
+  bgb <- function(...) getBackgroundBins(counts, bias=bias, bs=20, 
+                                         verbose=FALSE, ...)
+  # without balancing, peaks are not used as background as often as they are 
+  # targets; with it, they are
+  colUse <- function(bg) 
+    as.numeric(Matrix::crossprod(bg@binBinProbs, bg@binDensity))[bg@binDensity>0]
+  expect_gt(max(abs(colUse(bgb(tol=NULL))-1)), 0.1)
+  expect_lt(max(abs(colUse(bgb())-1)), 0.01)
+  dev <- function(...){
+    bg <- computeBackgrounds(counts, bgb(...))
+    assay(computeDeviationsAnalytic(counts, bg, sets), "deviations")
+  }
+  # the ratio correction makes the deviations of random sets unbiased even 
+  # when the bins are not balanced
+  expect_lt(abs(mean(dev(tol=NULL))), 0.002)
+  expect_lt(abs(mean(dev())), 0.002)
+})

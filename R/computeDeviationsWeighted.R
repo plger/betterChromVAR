@@ -53,9 +53,11 @@
 #' motifCounts <- Matrix::t(motifMatches) %*% assay(counts)
 #' dev1 <- computeDeviationsWeighted(motifCounts, counts, motifMatches)
 #' dev1
-#' # in this case, the results are identical to :
+#' # in this case, the results are essentially identical to :
 #' dev2 <- betterChromVAR(counts, motifMatches)
-#' stopifnot(identical(assays(dev1), assays(dev2)))
+#' sapply(assayNames(dev1), function(a){
+#'   cor(as.vector(assay(dev1, a)), as.vector(assay(dev2, a)))
+#' })
 computeDeviationsWeighted <- function(weightedMotifCounts, unweightedPeakCounts,
                                       annotations, bg=NULL, retSE=TRUE, fpc=TRUE, ...){
   stopifnot(ncol(weightedMotifCounts)==ncol(unweightedPeakCounts))
@@ -97,22 +99,24 @@ computeDeviationsWeighted <- function(weightedMotifCounts, unweightedPeakCounts,
                               dims = c(nrow(bg@binBinProbs), length(binMap)))
   motifBinCounts <- Matrix::t(annotations) %*% Matrix::t(bin2peakMat)
   motif_bg_exp_unweighted <- as.matrix(motifBinCounts %*% bg@E)
-  unwMoCounts <- as.matrix(Matrix::t(annotations) %*% unweightedPeakCounts)
+  unwMoCounts <- .annotCrossprod(annotations, unweightedPeakCounts)
   unwMoCounts <- Matrix::rowMeans(.fastColNorm(unwMoCounts))*sum(unwMoCounts)
   fg <- sum(weightedMotifCounts)*Matrix::rowMeans(.fastColNorm(weightedMotifCounts))
   motif_sf <- fg / unwMoCounts
-  motif_bg_exp <- motif_bg_exp_unweighted * motif_sf
+  st <- .annotationStats(annotations, bg)
+  # background expectation rescaled to match the motif's global expectation 
+  # (see computeDeviationsAnalytic)
+  motif_bg_exp <- motif_bg_exp_unweighted * motif_sf * (st$globalAvg/st$bgExp)
   
   numerator <- weightedMotifCounts - motif_bg_exp
   
   if(isTRUE(fpc)){
-    bg_variance_scaled <- .fpcVariance(annotations, bg, bg@V) * (motif_sf^2)
+    bg_variance_scaled <- .fpcVariance(annotations, bg, bg@V, st=st) * (motif_sf^2)
   }else{
     bg_variance_scaled <- as.matrix(motifBinCounts %*% bg@V) * (motif_sf^2)
   }
   z <- numerator / sqrt(pmax(0, bg_variance_scaled))
-  globalMotifAvg <- as.vector(Matrix::crossprod(annotations, 
-                                                bg@expectation))
+  globalMotifAvg <- st$globalAvg
   sf <- bg@depth/sum(bg@expectation)
   # the global expectation is rescaled to the scale of the weighted counts, as
   # the numerator, so that the deviations are relative to it
@@ -125,7 +129,7 @@ computeDeviationsWeighted <- function(weightedMotifCounts, unweightedPeakCounts,
   if(!isTRUE(retSE)) return(a)
     
   d <- data.frame(N=Matrix::colSums(annotations),
-                  Neff=.effectiveN(annotations, bg, bg@expectation, fpc))
+                  Neff=.effectiveN(annotations, bg, bg@expectation, fpc, st=st))
   
   .packageDevSE(a, SummarizedExperiment(list(), colData=CD),motifCD, d)
 }

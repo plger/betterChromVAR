@@ -1,3 +1,37 @@
+# betterChromVAR 1.99.1
+
+## New features
+* The background expectation of each motif is now rescaled so that its global 
+  expectation equals that of the motif's peaks (neglible effect in single-cell
+  data, better agreement with chromVAR in bulk data).
+* Motif interaction analysis, including functions moved from `weightedMotifAccess`
+  (and improved), as well as peak-level functions and a vignette.
+* `fitDeviations()` (moved from `weightedMotifAccess`)
+* `peakLevelMotifTests()` and `stepwisePeakLevelMotifTests()` as peak-logFC-based
+  alternative to the analysis of deviations.
+* Motif interaction analysis, including functions moved from `weightedMotifAccess`
+  (and improved), as well as peak-level functions and a vignette.
+
+# betterChromVAR 1.1.14
+
+## New features
+* `ridge` argument of `betterChromVAR()` and `computeDeviationsAnalytic()`: 
+  optional decorrelation of the motifs that share peaks (ridge deconvolution 
+  based on the overlap between motifs after background subtraction).
+* `getGradedMatches()`: graded (instead of binary) motif matches, giving
+  partial weights to weak matches according to their score.
+
+## Changes
+* Removed the bias shrinkage options -- see downstream smoothing instead.
+* The bin-to-bin background probabilities of `getBackgroundBins()` are now 
+  balanced (`tol` argument; `tol=NULL` restores the earlier behavior).
+  This slightly changes the results, removing a bias in mean z.
+* Minor gains in efficiency.
+
+# betterChromVAR 1.1.13
+* added pseudoCount and `loo` to make CVnorm more robust.
+* added adaptive kernel width
+
 # betterChromVAR 1.1.12
 
 ## New features
@@ -8,8 +42,7 @@
 * Fixed wrong denominator in `computeDeviationsWeighted`
 * Fixed mistake in background variance (affecting the scale of the z-scores):
   it is now the variance of the counts of each bin's background peaks (as
-  would be drawn by `sampleBackgroundPeaks()`), and shrinkage is only
-  applied to the expectation.
+  drawn by `sampleBackgroundPeaks()`), computed before any shrinkage
 
 ## Changes
 * The z-scores (and things based on it, e.g. motif variability) now include a

@@ -23,7 +23,7 @@ background peaks for each input peak.
 \details{
 This function is not used by \code{\link{betterChromVAR}}, which is
 deterministic, but for other applications requiring an outputs similar to
-that of the original \code{\link[chromVAR]{getBackgroundPeaks}}.
+that of the original \code{chromVAR::getBackgroundPeaks()}.
 }
 \examples{
 counts_se <- getDummyData()$counts

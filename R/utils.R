@@ -14,20 +14,6 @@
   tcrossprod(x, mapMat)
 }
 
-# Create a 1D Gaussian kernel matrix
-#' @importFrom stats median
-.diagKernalMatrix <- function(n, sigma, sparsify=TRUE){
-  x <- seq_len(n)
-  dist_mat <- outer(x, x, "-")
-  G <- exp(-(dist_mat^2) / (2 * sigma^2))
-  G <- G/rowSums(G)
-  if(sparsify && n>10){
-    G[which(G<median(G))] <- 0
-    G <- as(G, "sparseMatrix")
-  }
-  G
-}
-
 #' getExpectation
 #' 
 #' Computes expected counts (a glorified rowMeans)
@@ -63,87 +49,6 @@ getExpectation <- function(counts, grouping=NULL, normalize=TRUE){
     if(is(agcnt, "dgeMatrix")) agcnt <- as.matrix(agcnt)
   }
   DelayedMatrixStats::rowMeans2(agcnt)
-}
-
-
-#' shrinkColumnProps
-#' 
-#' Empirical Bayes shrinkage of a matrix of counts towards a prior proportion 
-#' (by default the mean across columns).
-#'
-#' @param x A matrix of counts, with features as rows and samples as columns.
-#' @param shrinkTo A vector (of length equal to `nrow(x)`) of sampling 
-#' probabilities to shrink towards, or a matrix (of the same dimensions as `x`) 
-#' of such probabilities. If omitted, will be the weighted mean of the columns'
-#' relative frequencies.
-#' @param var.theo Logical; whether to use theoretical (i.e. binomial) variances
-#'  of the proportions, rather than the observed (weighted) variance.
-#'
-#' @returns A matrix of the same dimensions as `x` representing the shrunk 
-#'  column-wise proportions.
-#' @export
-#' @importFrom Matrix rowSums
-#'
-#' @examples
-#' # generate a matrix of 5 sampling (with different total counts) of 20 
-#' # features based on the same base frequency :
-#' baseFreq <- abs(rnorm(20))
-#' baseFreq <- baseFreq/sum(baseFreq)
-#' mat <- sapply(c(10,20,30,40,50), function(tot){
-#'   rpois(length(baseFreq), baseFreq*tot)
-#' })
-#' # apply shrinkage and confirm that shrunk proportions are better correlated
-#' shrunk_mat <- shrinkColumnProps(mat)
-#' mean(cor(shrunk_mat))>mean(cor(mat))
-shrinkColumnProps <- function(x, shrinkTo=NULL, var.theo=FALSE) {
-  cs <- Matrix::colSums(x)
-  bigTotal <- sum(cs)
-  p <- .fastColNorm(x, cs=cs)
-  
-  if(is.null(shrinkTo)){
-    mu <- Matrix::rowSums(x) / bigTotal
-  }else{
-    mu <- shrinkTo
-  }
-  
-  if(var.theo){
-    # theoretical (i.e. binomial) variances of the proportions
-    if(!is.array(mu)){
-      pos <- mu*bigTotal
-    }else if(is.null(shrinkTo)){
-      pos <- x
-    }else{
-      pos <- mu %*% Diagonal(x=cs)
-    }
-    v_weighted <- bigTotal*pos*(1-pos)
-  }else{
-    # weighted row variances
-    v_weighted <- Matrix::rowSums(sweep((p - mu)^2, 2, cs, "*")) / bigTotal
-  }
-  
-  # Estimate M (precision parameter)
-  # This formula adjusts the observed weighted variance 
-  # by subtracting the expected binomial noise
-  M <- (mu * (1 - mu) - v_weighted) /
-    (v_weighted - (mu * (1 - mu) / mean(cs)))
-  
-  # Stability Handling
-  # If denominator is negative or zero, variance is too low to estimate M
-  M[is.na(M) | !is.finite(M) | M <= 0] <- 1000 
-  
-  # Back-calculate Alpha and Beta Priors
-  alpha <- mu * M
-  beta <- (1 - mu) * M
-  
-  # Shrinkage (Posterior Mean)
-  # x_ij is the count, n_j is the column sum
-  # Result = (x_ij + alpha_i) / (n_j + alpha_i + beta_i)
-  
-  # Numerator: mat + alpha (vector added to each column)
-  # Denominator: n_j (vector) + M (vector) -> requires a matrix
-  den_mat <- sweep(matrix(M, nrow = nrow(x), ncol = ncol(x)), 2, cs, "+")
-  
-  (x + alpha) / den_mat
 }
 
 
@@ -241,8 +146,59 @@ addGCBias <- function(object, genome){
 
 # Null variance of the motif sums (motifs x cells) with the finite-population 
 # correction; V is the bins x cells matrix of background variances.
-.fpcVariance <- function(annotations, background, V){
-  as.matrix(Matrix::crossprod(.fpcStats(annotations, background)$coef, V))
+.fpcVariance <- function(annotations, background, V, st=NULL){
+  if(is.null(st)) st <- .fpcStats(annotations, background)
+  as.matrix(Matrix::crossprod(st$coef, V))
+}
+
+# Quantities that depend only on the annotations and the bins (and not on the
+# cells): the output of `.fpcStats` and the global expectation of each motif.
+# They are computed once and passed on (as `st`), rather than for each chunk
+# of cells.
+.annotationStats <- function(annotations, background, 
+                             expectation=background@expectation){
+  st <- .fpcStats(annotations, background)
+  st$globalAvg <- as.vector(Matrix::crossprod(annotations, expectation))
+  # global expectation of the background of each motif (E_b[sum of expectation
+  # of the sampled peaks]), used by the ratio correction
+  binExp <- as.vector(sparseMatrix(i=background@peak2bin, 
+                                   j=seq_along(background@peak2bin),
+                                   dims=c(length(background@binDensity), 
+                                          length(expectation))) %*% expectation)
+  st$bgExp <- as.vector(Matrix::crossprod(
+    st$N, as.vector(background@binBinProbs %*% binExp)))
+  st
+}
+
+# Whether annotations are sparse enough for sparse algebra to be worth it
+.isSparseAnnotation <- function(x, maxDensity=0.2){
+  inherits(x, "sparseMatrix") && Matrix::nnzero(x)/prod(dim(x)) < maxDensity
+}
+
+# Splits the rows of x in blocks which, once dense, have at most `blockCells`
+# values
+.rowBlocks <- function(x, blockCells=2.5e7){
+  i <- seq_len(nrow(x))
+  unname(split(i, ceiling(i/max(1L, floor(blockCells/ncol(x))))))
+}
+
+# Motif sums, i.e. t(annotations) %*% counts, as a dense matrix (motifs x 
+# cells). Sparse annotations (e.g. binary matches) use a sparse cross-product.
+# For annotations that are not sparse (e.g. graded matches), this is slow and
+# memory-hungry, and the annotations are instead processed as dense blocks of 
+# rows.
+.annotCrossprod <- function(annotations, counts, maxDensity=0.2, 
+                            blockCells=2.5e7){
+  if(!inherits(annotations, "sparseMatrix") || 
+     .isSparseAnnotation(annotations, maxDensity))
+    return(as.matrix(Matrix::crossprod(annotations, counts)))
+  annotations <- .asDgC(annotations)
+  res <- Reduce("+", lapply(.rowBlocks(annotations, blockCells), function(i){
+    as.matrix(Matrix::crossprod(as.matrix(annotations[i,,drop=FALSE]),
+                                counts[i,,drop=FALSE]))
+  }))
+  dimnames(res) <- list(colnames(annotations), colnames(counts))
+  res
 }
 
 # Effective number of peaks of each motif: the number of peaks (N) of a motif 
@@ -257,8 +213,9 @@ addGCBias <- function(object, genome){
 # counts being taken as proportional to their mean). Without overlap between 
 # a motif's peaks and their expectation Neff = N; with an even spread of the
 # motif's peaks across bins, Neff = N(1-N/P).
-.effectiveN <- function(annotations, background, expectation, fpc=TRUE){
-  st <- .fpcStats(annotations, background)
+.effectiveN <- function(annotations, background, expectation, fpc=TRUE,
+                        st=NULL){
+  if(is.null(st)) st <- .fpcStats(annotations, background)
   bin2peak <- sparseMatrix(i=background@peak2bin, j=seq_along(background@peak2bin),
                            dims=c(length(background@binDensity), nrow(annotations)))
   Eb <- as.numeric(background@binBinProbs %*% (bin2peak %*% expectation))

@@ -10,7 +10,10 @@ getBackgroundBins(
   flbias = NULL,
   w = 0.1,
   bs = NULL,
+  maxShare = 0.1,
+  maxWidthFactor = 4,
   pseudo = 0,
+  tol = 0.001,
   verbose = TRUE
 )
 }
@@ -37,8 +40,21 @@ number of bins for, in order: enrichment, GC and fragment length. By
 default, \code{bs=50} if \code{flbias} is not provided (mimicking chromVAR), and
 \code{bs=c(30, 30, 6)} if it is.}
 
+\item{maxShare}{Optional maximum share that a peak can have in the
+expectation of its own background. If not NULL, the width of the kernel is
+increased (up to \code{maxWidth} times \code{w}) for the bins that would otherwise
+exceed it, so that sparsely-populated bins draw more from their neighbors.}
+
+\item{maxWidthFactor}{The maximum factor by which \code{w} can be multiplied when
+\code{maxShare} is used.}
+
 \item{pseudo}{Optional pseudocount to be added. This should not be needed
 with standard workflows.}
+
+\item{tol}{The tolerance of the balancing of the bin-to-bin probabilities
+i.e. the maximum deviation tolerated from 1 of the total weight with which
+each bin is used in the background of the others. Use \code{tol=NULL} to
+disable the balancing.}
 
 \item{verbose}{Whether to print processing info.}
 }

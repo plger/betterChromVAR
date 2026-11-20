@@ -75,9 +75,11 @@ attach(getDummyData())
 motifCounts <- Matrix::t(motifMatches) \%*\% assay(counts)
 dev1 <- computeDeviationsWeighted(motifCounts, counts, motifMatches)
 dev1
-# in this case, the results are identical to :
+# in this case, the results are essentially identical to :
 dev2 <- betterChromVAR(counts, motifMatches)
-stopifnot(identical(assays(dev1), assays(dev2)))
+sapply(assayNames(dev1), function(a){
+  cor(as.vector(assay(dev1, a)), as.vector(assay(dev2, a)))
+})
 }
 \seealso{
 \code{\link[=computeDeviationsAnalytic]{computeDeviationsAnalytic()}}
