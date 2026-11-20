@@ -18,6 +18,7 @@
 #'   (`motifMatches`) of the matches of 29 motifs in each peak of `peakSE`.
 #'
 #' @name NR3C1example
+#' @aliases peakSE motifMatches motifs didevs
 #' @docType data
 #' @keywords datasets
 #' @examples

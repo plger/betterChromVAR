@@ -8,7 +8,7 @@
 #'   counts (in the `counts` assay, or `useAssay`), from which the differential
 #'   analysis `dea` was obtained. It defines the peaks (rows), and provides the
 #'   sample-level data used to estimate the correlation between peaks, as well
-#'   as the `bias` column of `rowData` (see \code{\link{addGCbias}}),
+#'   as the `bias` column of `rowData` (see \code{\link{addGCBias}}),
 #'   if present (which is very much recommended).
 #' @param dea The table of the results of a differential accessibility analysis
 #'   of the peaks of `se` (or a named list of such tables, one for each 

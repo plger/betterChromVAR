@@ -560,8 +560,7 @@ exploreMotifInteraction <- function(counts, motifs, genome, bg=NULL,
                                     minDist=5L, restrictToRegions=FALSE, ...){
   stopifnot(length(motifs)==2)
   stopifnot(inherits(counts, "RangedSummarizedExperiment"))
-  if(!requireNamespace("motifmatchr", quietly=TRUE))
-    stop("The `motifmatchr` package is required for this function.")
+  rlang::check_installed("motifmatchr", reason="to find the motif matches.")
   moi <- motifmatchr::matchMotifs(motifs, counts, genome=genome)
   moi2 <- motifCoOccurence(motifs, list(names(motifs)), rowRanges(counts),
                            genome = genome, nDistQuantiles=nDistQuantiles,

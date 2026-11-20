@@ -3,6 +3,10 @@
 \docType{data}
 \name{NR3C1example}
 \alias{NR3C1example}
+\alias{peakSE}
+\alias{motifMatches}
+\alias{motifs}
+\alias{didevs}
 \title{NR3C1example}
 \description{
 A small example dataset of ATAC-seq data upon ligand-based activation of the

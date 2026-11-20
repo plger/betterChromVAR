@@ -1,4 +1,4 @@
-# betterChromVAR 1.1.15
+# betterChromVAR 1.99.1
 
 ## New features
 * The background expectation of each motif is now rescaled so that its global 

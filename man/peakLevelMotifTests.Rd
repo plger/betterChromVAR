@@ -22,7 +22,7 @@ peakLevelMotifTests(
 counts (in the \code{counts} assay, or \code{useAssay}), from which the differential
 analysis \code{dea} was obtained. It defines the peaks (rows), and provides the
 sample-level data used to estimate the correlation between peaks, as well
-as the \code{bias} column of \code{rowData} (see \code{\link{addGCbias}}),
+as the \code{bias} column of \code{rowData} (see \code{\link{addGCBias}}),
 if present (which is very much recommended).}
 
 \item{dea}{The table of the results of a differential accessibility analysis

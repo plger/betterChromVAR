@@ -53,8 +53,7 @@
 getGradedMatches <- function(pwms, subject, genome=NULL,
                              pCutoffs=c(5e-4, 5e-5), minWeight=0.05,
                              chunkSize=100L, verbose=FALSE, ...){
-  if(!requireNamespace("motifmatchr", quietly=TRUE))
-    stop("This function requires the 'motifmatchr' package.")
+  rlang::check_installed("motifmatchr", reason="to find the motif matches.")
   stopifnot(is.numeric(pCutoffs) && length(pCutoffs)==2L && all(pCutoffs>0))
   stopifnot(is.numeric(minWeight) && length(minWeight)==1L && minWeight>=0 &&
               minWeight<1)

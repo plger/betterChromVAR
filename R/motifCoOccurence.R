@@ -66,13 +66,13 @@
 #' @importFrom S4Vectors queryHits subjectHits from to
 #' @importFrom GenomicRanges findOverlaps GRanges granges resize seqnames start end width
 #' @importFrom stats quantile
+#' @importFrom rlang check_installed
 motifCoOccurence <- function(motifs, pairs, regions, genome, centerDist=TRUE,
                              minDist=5, maxDist=50, exclusiveDist=TRUE,
                              restrictToRegions=FALSE,
                              nDistQuantiles=NULL, ignore.strand=TRUE){
   
-  if(!requireNamespace("motifmatchr", quietly=TRUE))
-    stop("The `motifmatchr` package is required for this function.")
+  rlang::check_installed("motifmatchr", reason="to find the motif matches.")
   stopifnot(is(motifs, "XMatrixList"))
   stopifnot(is.list(pairs) && all(lengths(pairs)==2))
   stopifnot(is(regions, "GRanges"))
@@ -174,8 +174,7 @@ motifCoOccurence <- function(motifs, pairs, regions, genome, centerDist=TRUE,
 
 # genome fasta file (requires Rsamtools)
 .getFaFile <- function(path){
-  if(!requireNamespace("Rsamtools", quietly=TRUE))
-    stop("The `Rsamtools` package is required to use a fasta file as genome.")
+  rlang::check_installed("Rsamtools", reason="to use a fasta file as genome.")
   Rsamtools::FaFile(path)
 }
 
