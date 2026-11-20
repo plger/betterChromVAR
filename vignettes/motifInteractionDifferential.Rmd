@@ -245,6 +245,9 @@ into account). Finally, the variance is inflated to account for the
 correlation between peaks, as done by `camera()` in the `r Biocpkg("limma")` 
 package.
 
+Note that the peak-level functions are considerably slower than the deviation-
+based ones, so consider using multithreading.
+
 ### Peak-level differential motif accessibility
 
 For each motif, `peakLevelMotifTests` tests whether the peaks harboring the 

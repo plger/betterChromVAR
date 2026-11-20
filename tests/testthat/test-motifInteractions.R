@@ -232,6 +232,26 @@ local({
     expect_equal(r2$difference, res$difference)
   })
   
+  test_that("the peak-level functions give the same results with threads", {
+    skip_on_os("windows")
+    r1 <- peakLevelMotifTests(peakSE, d$dea, motifMatches, design=d$design,
+                              minCount=10)
+    r2 <- peakLevelMotifTests(peakSE, d$dea, motifMatches, design=d$design,
+                              minCount=10, nthreads=2)
+    expect_equal(r2, r1)
+    s1 <- stepwisePeakLevelMotifTests(peakSE, d$dea, motifMatches, 
+                                      design=d$design, minCount=10)
+    s2 <- stepwisePeakLevelMotifTests(peakSE, d$dea, motifMatches, 
+                                      design=d$design, minCount=10, 
+                                      nthreads=2)
+    expect_equal(s2, s1)
+    i1 <- peakLevelMotifInteractions(peakSE, motifMatches, bait="GCR", 
+                                     group="group", minCount=10)
+    i2 <- peakLevelMotifInteractions(peakSE, motifMatches, bait="GCR", 
+                                     group="group", minCount=10, nthreads=2)
+    expect_equal(i2, i1)
+  })
+  
   test_that("peakLevelMotifTests recovers a planted effect and is calibrated", {
     set.seed(1)
     n <- nrow(peakSE)

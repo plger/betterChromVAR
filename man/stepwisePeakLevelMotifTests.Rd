@@ -16,7 +16,8 @@ stepwisePeakLevelMotifTests(
   adjustWidth = FALSE,
   vif = TRUE,
   useAssay = "counts",
-  lib.size = NULL
+  lib.size = NULL,
+  nthreads = NULL
 )
 }
 \arguments{
@@ -71,6 +72,10 @@ motif (see Details).}
 \item{lib.size}{Optional library sizes (default is the column sums of the
 counts), used to compute the log-counts-per-million from which the
 correlation between peaks is estimated.}
+
+\item{nthreads}{Either an integer scalar indicating the number of threads to
+use (the motifs are distributed across them), or a \code{BiocParallelParam}
+object. Results do not depend on it.}
 }
 \value{
 A list with two data.frames: \code{selected}, with one row for each

@@ -380,6 +380,9 @@ discoverMotifInteractions <- function(dev, group, covar=c(), global=FALSE,
 #' @param useAssay The assay containing the counts.
 #' @param lib.size Optional library sizes (default is the column sums of the
 #'   counts), passed to \code{\link[limma]{voom}}.
+#' @param nthreads Either an integer scalar indicating the number of threads to
+#'   use (the partners are distributed across them), or a `BiocParallelParam` 
+#'   object. Results do not depend on it.
 #'
 #' @details
 #' The differential accessibility between groups (log2-fold-change and its
@@ -436,6 +439,7 @@ discoverMotifInteractions <- function(dev, group, covar=c(), global=FALSE,
 #'   sites with both motifs) and excess correlation (`rho.both`) for the
 #'   peaks with both motifs.
 #' @importFrom limma voom lmFit eBayes interGeneCorrelation
+#' @importFrom BiocParallel bplapply bpnworkers
 #' @importFrom splines ns
 #' @importFrom stats p.adjust pt model.matrix ave
 #' @export
@@ -446,10 +450,12 @@ discoverMotifInteractions <- function(dev, group, covar=c(), global=FALSE,
 #'                            group="group", minCount=5)
 peakLevelMotifInteractions <- function(se, annotation, bait, group, covar=c(),
                                        minCount=20, splineDF=3, adjustWidth=FALSE, 
-                                       vif=TRUE, useAssay="counts", lib.size=NULL){
+                                       vif=TRUE, useAssay="counts", lib.size=NULL,
+                                       nthreads=NULL){
   stopifnot(inherits(se, "SummarizedExperiment"))
   stopifnot(nrow(se)==nrow(annotation))
   stopifnot(length(bait)==1 && bait %in% colnames(annotation))
+  BPPARAM <- .bpFromThreads(nthreads)
   if(inherits(annotation, "SummarizedExperiment")){
     annotation <- assay(annotation)
   }
@@ -473,7 +479,7 @@ peakLevelMotifInteractions <- function(se, annotation, bait, group, covar=c(),
                   (tot-nBoth)>=minCount)
   if(length(keep)==0) stop("No interaction passing filtering.")
 
-  res <- lapply(partners[keep], \(m){
+  res <- .lapplyBP(partners[keep], BPPARAM, \(m){
     pp <- as.vector(annotation[,m])
     cell <- 1L + ab + 2L*pp  # 1: neither, 2: bait only, 3: partner only, 4: both
     X <- cbind(1, ab, pp, ab*pp, covs)

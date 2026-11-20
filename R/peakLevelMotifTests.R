@@ -41,6 +41,9 @@
 #' @param lib.size Optional library sizes (default is the column sums of the 
 #'   counts), used to compute the log-counts-per-million from which the 
 #'   correlation between peaks is estimated.
+#' @param nthreads Either an integer scalar indicating the number of threads to
+#'   use (the motifs are distributed across them), or a `BiocParallelParam` 
+#'   object. Results do not depend on it.
 #'
 #' @details
 #' The differential accessibility between groups (log2-fold-change and its 
@@ -125,6 +128,7 @@
 #'   and excess correlation (`rho`) of its peaks.
 #' @author Pierre-Luc Germain
 #' @importFrom stats p.adjust pt model.matrix ave
+#' @importFrom BiocParallel bplapply bpnworkers
 #' @export
 #' @examples
 #' attach(getDummyData())
@@ -138,8 +142,10 @@
 #' peakLevelMotifTests(counts, dea, motifMatches, design=design, minCount=5)
 peakLevelMotifTests <- function(se, dea, annotation, design=NULL, 
                                 minCount=20, splineDF=3, adjustWidth=FALSE,
-                                vif=TRUE, useAssay="counts", lib.size=NULL){
+                                vif=TRUE, useAssay="counts", lib.size=NULL,
+                                nthreads=NULL){
   vif <- .checkVif(vif, !is.null(design))
+  BPPARAM <- .bpFromThreads(nthreads)
   inp <- .peakLevelInput(se, dea, annotation, design, splineDF, vif, 
                          useAssay, lib.size, adjustWidth)
   pl <- inp$pl
@@ -153,7 +159,7 @@ peakLevelMotifTests <- function(se, dea, annotation, design=NULL,
   res <- do.call(rbind, lapply(seq_along(inp$contrasts), \(ci){
     cbind(contrast=inp$contrasts[ci], 
           .peakLevelMotifRegress(pl, annotation, keep, ci, vif=vif, 
-                                 rhoCache=rhoCache))
+                                 rhoCache=rhoCache, BPPARAM=BPPARAM))
   }))
   .finalizePeakLevel(res)
 }
@@ -313,22 +319,47 @@ peakLevelMotifTests <- function(se, dea, annotation, design=NULL,
 # presence of each of the motifs, optionally adjusting for other motifs (`adj`, 
 # a matrix with the presence of these other motifs in the peaks).
 .peakLevelMotifRegress <- function(pl, annotation, motifs, ci, adj=NULL, 
-                                   vif=FALSE, rhoCache=new.env()){
-  do.call(rbind, lapply(motifs, \(m){
+                                   vif=FALSE, rhoCache=new.env(), 
+                                   BPPARAM=NULL){
+  cached <- mget(motifs, envir=rhoCache, ifnotfound=list(NULL))
+  out <- .lapplyBP(seq_along(motifs), BPPARAM, \(k){
+    m <- motifs[k]
     mm <- as.vector(annotation[,m])
-    if(is.null(rhoCache[[m]])) rhoCache[[m]] <- .motifRho(pl, mm, vif)
-    rho <- rhoCache[[m]]
+    rho <- cached[[k]]
+    if(is.null(rho)) rho <- .motifRho(pl, mm, vif)
     X <- cbind(1, mm, adj, pl$covs)
     r <- tryCatch(.peakMetaRegression(pl$lfc[,ci], pl$vr[,ci], X, 1L+mm, rho),
                   error=function(e) NULL)
     if(is.null(r)){ # (e.g. a motif that is collinear with the adjustment)
-      return(data.frame(motif=m, N=sum(mm), difference=NA_real_, se=NA_real_,
-                        t=NA_real_, tau=NA_real_, rho=rho[2]))
+      res <- data.frame(motif=m, N=sum(mm), difference=NA_real_, se=NA_real_,
+                        t=NA_real_, tau=NA_real_, rho=rho[2])
+    }else{
+      sdb <- sqrt(diag(r$vcov))
+      res <- data.frame(motif=m, N=sum(mm), difference=r$beta[2], se=sdb[2], 
+                        t=r$beta[2]/sdb[2], tau=sqrt(r$tau2[2]), rho=rho[2])
     }
-    sdb <- sqrt(diag(r$vcov))
-    data.frame(motif=m, N=sum(mm), difference=r$beta[2], se=sdb[2], 
-               t=r$beta[2]/sdb[2], tau=sqrt(r$tau2[2]), rho=rho[2])
-  }))
+    list(res=res, rho=rho)
+  })
+  # (the cache is updated here, since workers cannot do it)
+  for(k in seq_along(motifs)) 
+    if(is.null(cached[[k]])) rhoCache[[motifs[k]]] <- out[[k]]$rho
+  do.call(rbind, lapply(out, \(x) x$res))
+}
+
+# lapply over X, distributing the elements over the workers of BPPARAM (in 
+# interleaved chunks, so that the load is balanced). Equivalent to `lapply`
+# when there is no (or a single) worker.
+.lapplyBP <- function(X, BPPARAM, FUN){
+  nW <- if(is.null(BPPARAM)) 1L else BiocParallel::bpnworkers(BPPARAM)
+  if(nW<=1L || length(X)<=1L) return(lapply(X, FUN))
+  n <- length(X)
+  ch <- split(seq_len(n), rep_len(seq_len(min(n, 4L*nW)), n))
+  res <- bplapply(ch, BPPARAM=BPPARAM, \(i) lapply(X[i], FUN))
+  out <- vector("list", n)
+  out[unlist(ch, use.names=FALSE)] <- unlist(res, recursive=FALSE, 
+                                              use.names=FALSE)
+  names(out) <- names(X)
+  out
 }
 
 #' stepwisePeakLevelMotifTests
@@ -390,10 +421,12 @@ peakLevelMotifTests <- function(se, dea, annotation, design=NULL,
 stepwisePeakLevelMotifTests <- function(se, dea, annotation, design=NULL, 
                                         alpha=0.05, maxSteps=20L, minCount=20,
                                         splineDF=3, adjustWidth=FALSE, vif=TRUE,
-                                        useAssay="counts", lib.size=NULL){
+                                        useAssay="counts", lib.size=NULL,
+                                        nthreads=NULL){
   stopifnot(is.numeric(alpha) && length(alpha)==1 && alpha>0 && alpha<1)
   stopifnot(is.numeric(maxSteps) && length(maxSteps)==1 && maxSteps>=1)
   vif <- .checkVif(vif, !is.null(design))
+  BPPARAM <- .bpFromThreads(nthreads)
   inp <- .peakLevelInput(se, dea, annotation, design, splineDF, vif, 
                          useAssay, lib.size, adjustWidth)
   pl <- inp$pl
@@ -412,7 +445,7 @@ stepwisePeakLevelMotifTests <- function(se, dea, annotation, design=NULL,
       adj <- if(length(sel)==0) NULL else 
         as.matrix(annotation[,sel,drop=FALSE])*1
       r <- .peakLevelMotifRegress(pl, annotation, remaining, ci, adj=adj, 
-                                  vif=vif, rhoCache=rhoCache)
+                                  vif=vif, rhoCache=rhoCache, BPPARAM=BPPARAM)
       r <- .finalizePeakLevel(cbind(contrast=inp$contrasts[ci], r))
       top <- r[1,]
       if(is.na(top$adj.P.Val) || top$adj.P.Val>=alpha ||

@@ -15,7 +15,8 @@ peakLevelMotifInteractions(
   adjustWidth = FALSE,
   vif = TRUE,
   useAssay = "counts",
-  lib.size = NULL
+  lib.size = NULL,
+  nthreads = NULL
 )
 }
 \arguments{
@@ -53,6 +54,10 @@ correlation between the peaks of a set (default TRUE).}
 
 \item{lib.size}{Optional library sizes (default is the column sums of the
 counts), passed to \code{\link[limma]{voom}}.}
+
+\item{nthreads}{Either an integer scalar indicating the number of threads to
+use (the partners are distributed across them), or a \code{BiocParallelParam}
+object. Results do not depend on it.}
 }
 \value{
 A data.frame with, for each motif and contrast, the \code{difference}
