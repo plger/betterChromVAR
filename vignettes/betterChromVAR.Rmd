@@ -83,7 +83,8 @@ be in that format too or provided as a (sparse) matrix.
 
 There are multiple ways of generating your peak counts; the original
 `r Biocpkg("chromVAR")` package includes such a function
-(`getCounts()`), and the `r Githubpkg("ETHZ-INS/epiwraps", "epiwraps")`
+(`getCounts()`), and the 
+`r Githubpkg("Jiayi-Wang-Joey/weightedMotifAccess", "weightedMotifAccess")`
 package has some with more options (functions `peakCountsFromBAM()` and
 `peakCountsFromFrags()`). Similarly, the `r Biocpkg("motifmatchr")`
 package can be used to generate the motif matching annotation. An
@@ -208,8 +209,8 @@ an optional third dimension: fragment length bias (see
 compilation of an additional bias component (the log10-transformed mean
 or median fragment length per region). If this is desired, on option is to use 
 the counting functions from the
-`r Githubpkg("ETHZ-INS/epiwraps", "epiwraps")` package, which can
-provide this information.
+`r Githubpkg("Jiayi-Wang-Joey/weightedMotifAccess", "weightedMotifAccess")`
+package, which can provide this information.
 
 ## Note on single-cell data
 
