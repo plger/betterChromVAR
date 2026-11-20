@@ -103,10 +103,12 @@ computeDeviationsWeighted <- function(weightedMotifCounts, unweightedPeakCounts,
   unwMoCounts <- Matrix::rowMeans(.fastColNorm(unwMoCounts))*sum(unwMoCounts)
   fg <- sum(weightedMotifCounts)*Matrix::rowMeans(.fastColNorm(weightedMotifCounts))
   motif_sf <- fg / unwMoCounts
-  motif_bg_exp <- motif_bg_exp_unweighted * motif_sf
+  st <- .annotationStats(annotations, bg)
+  # background expectation rescaled to match the motif's global expectation 
+  # (see computeDeviationsAnalytic)
+  motif_bg_exp <- motif_bg_exp_unweighted * motif_sf * (st$globalAvg/st$bgExp)
   
   numerator <- weightedMotifCounts - motif_bg_exp
-  st <- .fpcStats(annotations, bg)
   
   if(isTRUE(fpc)){
     bg_variance_scaled <- .fpcVariance(annotations, bg, bg@V, st=st) * (motif_sf^2)
@@ -114,8 +116,7 @@ computeDeviationsWeighted <- function(weightedMotifCounts, unweightedPeakCounts,
     bg_variance_scaled <- as.matrix(motifBinCounts %*% bg@V) * (motif_sf^2)
   }
   z <- numerator / sqrt(pmax(0, bg_variance_scaled))
-  globalMotifAvg <- as.vector(Matrix::crossprod(annotations, 
-                                                bg@expectation))
+  globalMotifAvg <- st$globalAvg
   sf <- bg@depth/sum(bg@expectation)
   # the global expectation is rescaled to the scale of the weighted counts, as
   # the numerator, so that the deviations are relative to it

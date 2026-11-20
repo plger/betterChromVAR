@@ -37,7 +37,7 @@ this package.
 `r Biocpkg("betterChromVAR")` is first and foremost a considerably
 faster, analytical re-implementation of the original method (it is also
 considerably faster than the C++ reimplementation in ArchR
-[@granja2021archr]. Contrarily to the original chromVAR, it is entirely
+[@granja2021archr]). Contrarily to the original chromVAR, it is entirely
 deterministic, and achieves much higher efficiency by replacing permutations 
 with an analytical solution and computing expectations and variance at the 
 level of bias bins, instead of in the peak-space (for more detail, see 
@@ -301,7 +301,7 @@ much), or the converse. Both are therefore relevant information in selecting
 useful motifs.
 
 
-## Decorrelating motifs that share peaks
+# Decorrelating motifs that share peaks
 
 Since peaks contain multiple motifs, a change in the accessibility of the 
 binding sites of one factor also affects the scores of the motifs that tend to 
@@ -334,7 +334,9 @@ dev2 <- betterChromVAR(counts, gradedMatches, ridge=3)
 
 While the two can be used independently, graded matches alone did not offer much
 improvement in our hands, and because they are much less sparse than standard 
-(i.e. binary) ones, they make the process heavier.
+(i.e. binary) ones, they make the process heavier. Together with ridge 
+normalization, however, graded matches offered the best reduction in signal 
+spillover across motifs.
 
 # Smoothing the deviations of single cells across neighboring cells
 
@@ -404,6 +406,11 @@ that was provided), it is not corrected for library size differences. Rather,
 it is on the original count scale (although not integer anymore), so that it is 
 amenable to use in downstream count-based analysis methods such as 
 `r Biocpkg("edgeR")`.
+
+Smoothing is generally the safest approach, although it is often not necessary
+when the differences between groups are not very large. When they are, however,
+or are strongly GC-biased, not smoothing can lead to `CVnorm()` correcting away 
+some of the biological differences.
 
 # betterChromVAR with kNN-based background
 

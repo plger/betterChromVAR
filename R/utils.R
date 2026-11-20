@@ -159,6 +159,14 @@ addGCBias <- function(object, genome){
                              expectation=background@expectation){
   st <- .fpcStats(annotations, background)
   st$globalAvg <- as.vector(Matrix::crossprod(annotations, expectation))
+  # global expectation of the background of each motif (E_b[sum of expectation
+  # of the sampled peaks]), used by the ratio correction
+  binExp <- as.vector(sparseMatrix(i=background@peak2bin, 
+                                   j=seq_along(background@peak2bin),
+                                   dims=c(length(background@binDensity), 
+                                          length(expectation))) %*% expectation)
+  st$bgExp <- as.vector(Matrix::crossprod(
+    st$N, as.vector(background@binBinProbs %*% binExp)))
   st
 }
 

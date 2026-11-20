@@ -69,7 +69,7 @@ test_that("the bin-to-bin probabilities are balanced", {
                c(nrow(counts), 3))
 })
 
-test_that("the balancing removes the bias of random sets of peaks", {
+test_that("the balancing and the ratio correction remove the bias of random sets", {
   counts <- simulateCounts(200, 4000, 6)
   bias <- runif(nrow(counts))
   nSets <- 60
@@ -77,12 +77,20 @@ test_that("the balancing removes the bias of random sets of peaks", {
                                        sample.int(nrow(counts), 1500))),
                        j=rep(seq_len(nSets), each=1500), x=1,
                        dims=c(nrow(counts), nSets))
+  bgb <- function(...) getBackgroundBins(counts, bias=bias, bs=20, 
+                                         verbose=FALSE, ...)
+  # without balancing, peaks are not used as background as often as they are 
+  # targets; with it, they are
+  colUse <- function(bg) 
+    as.numeric(Matrix::crossprod(bg@binBinProbs, bg@binDensity))[bg@binDensity>0]
+  expect_gt(max(abs(colUse(bgb(tol=NULL))-1)), 0.1)
+  expect_lt(max(abs(colUse(bgb())-1)), 0.01)
   dev <- function(...){
-    bg <- getBackgroundBins(counts, bias=bias, bs=20, verbose=FALSE, ...)
-    bg <- computeBackgrounds(counts, bg)
+    bg <- computeBackgrounds(counts, bgb(...))
     assay(computeDeviationsAnalytic(counts, bg, sets), "deviations")
   }
-  # positive bias without balancing (about 0.8%), absent with it
-  expect_gt(mean(dev(tol=NULL)), 0.004)
+  # the ratio correction makes the deviations of random sets unbiased even 
+  # when the bins are not balanced
+  expect_lt(abs(mean(dev(tol=NULL))), 0.002)
   expect_lt(abs(mean(dev())), 0.002)
 })

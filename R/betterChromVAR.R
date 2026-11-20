@@ -1,6 +1,6 @@
 #' betterChromVAR
 #' 
-#' A fast, analytic implementation of `chromVAR`.
+#' A fast, analytic implementation of (and improvement over) `chromVAR`.
 #' This is a wrapper around the \code{\link{getBackgroundBins}},
 #' \code{\link{computeBackgrounds}}, and \code{\link{computeDeviationsAnalytic}}
 #' steps. It additionally allows for multithreading. For more control or 

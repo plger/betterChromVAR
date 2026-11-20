@@ -25,6 +25,14 @@
 #'   motifs are not decorrelated.
 #'
 #' @details
+#' As in the original chromVAR, the background of each motif is expressed 
+#' relative to its own expected total accessibility, i.e. the expected counts of
+#' the background peaks are rescaled so that their global expectation equals 
+#' that of the motif's peaks (the first-order equivalent of dividing each 
+#' background set by its own expected total). This matters mostly in 
+#' high-depth data such as bulk, where it makes the results closer to those of 
+#' chromVAR (use `fpc=FALSE` and `tol=NULL` to emulate it).
+#' 
 #' `fpc` corrects correct the null variance used (as denominator) for the 
 #' z-scores for the fact that the expectation of each cell is estimated from 
 #' the cell's own counts, including in peaks containing the motif. This 
@@ -131,6 +139,12 @@ computeDeviationsAnalytic <- function(object, background, annotations,
   # motif-level background expectation and observed sums (M x S)
   motif_bg_exp <- as.matrix(Matrix::crossprod(st$N, background@E))
   observed_motif_sum <- .annotCrossprod(annotations, counts)
+
+  # first-order version of chromVAR's normalisation of each background set by
+  # its own expected total: E[bgObs/bgExp] ~ E[bgObs]/E[bgExp]. This makes the
+  # background's expectation match the motif's global expectation, and 
+  # protects against residual imbalances of the bins for a given motif.
+  motif_bg_exp <- motif_bg_exp * (st$globalAvg / st$bgExp)
 
   # deviation = (Obs - bgExpect) / bgExpect; z = (Obs-exp)/sdExpect
   deviations <- observed_motif_sum - motif_bg_exp

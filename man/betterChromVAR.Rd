@@ -54,7 +54,7 @@ z-scores for each motif/sample. The rowData additionally contains the
 number of motif matches and their variability.
 }
 \description{
-A fast, analytic implementation of \code{chromVAR}.
+A fast, analytic implementation of (and improvement over) \code{chromVAR}.
 This is a wrapper around the \code{\link{getBackgroundBins}},
 \code{\link{computeBackgrounds}}, and \code{\link{computeDeviationsAnalytic}}
 steps. It additionally allows for multithreading. For more control or

@@ -1,0 +1,381 @@
+---
+title: "Differential analysis and motif interaction analysis"
+author: 
+  - name: Pierre-Luc Germain
+    affiliation:
+    - ETH Zurich, Switzerland
+    email: pierre-luc.germain@hest.ethz.ch
+date: "`r doc_date()`"
+output: 
+  BiocStyle::html_document:
+    self_contained: yes
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    code_folding: show
+bibliography: ../inst/REFERENCES.bib
+package: "`r pkg_ver('betterChromVAR')`"
+vignette: >
+  %\VignetteIndexEntry{Motif interaction and differential analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}  
+---
+
+# Introduction
+
+In this vignette, we explore methods to identify synergies (or antagonisms) 
+between TFs. As a example dataset, we use a subset of an ATAC-seq dataset of 
+A549 cells upon ligand-based activation of the glucocorticoid receptor (GCR), 
+encoded by the NR3C1 gene.
+
+First, we load the package and the dataset:
+
+```{r, message=FALSE}
+library(betterChromVAR)
+library(SummarizedExperiment)
+data("NR3C1example", package="betterChromVAR")
+peakSE
+motifMatches
+```
+
+The `peakSE` object contains ATAC peaks counts for each 6 samples, while the 
+`motifMatches` object indicates which peak matches which of a selection of 29 
+motifs. For discussion about how exactly to generate those kinds of input, see
+the `r Biocpkg("betterChromVAR")` package.
+
+# Deviation-based methods
+
+Motif deviations, as for instance computed by the `r Biocpkg("betterChromVAR")`
+package, quantify the relative accessibility of given DNA motifs across 
+samples/cells. These motif scores are then use to inference the relative 
+activity of the corresponding TFs, and can then be used for differential 
+analysis across conditions. If you are not familiar with motif deviations, it 
+is recommended that you read up on it, for instance the documentation of the 
+`r Biocpkg("chromVAR")` and/or `r Biocpkg("betterChromVAR")` packages.
+
+## Standard differential motif accessibility using betterChromVAR
+
+First, we illustrate the effect of the treatment of GCR motif accessibility by
+computing standard motif deviations, followed by differential testing with
+`fitDeviations()`, a wrapper around `r Biocpkg("limma")` that moderates the
+variance according to the number of motif matches
+^[If you are not familiar with such differential testing, see the `r Biocpkg("limma")` documentation.]:
+
+```{r}
+dev <- betterChromVAR(peakSE, motifMatches)
+dev
+```
+
+```{r}
+fit <- fitDeviations(dev, design=~group)
+DAA <- as.data.frame(limma::topTable(fit, coef=2))
+DAA
+```
+
+The results show GCR as the most differentially-accessible motif between the 
+conditions, as expected, closely followed by the mineralocorticoid receptor 
+(MCR), which has a motif very similar to GCR. We could also look at the pattern
+across samples for top motifs (e.g. using `r Biocpkg("sechm")`).
+
+Note that the `DAA` table reports a `logFC`, because that is what 
+`r Biocpkg("limma")` outputs, however these cannot be interpreted as 
+fold-changes, and rather represent differences between the conditions.
+
+## Testing for motif interactions
+
+Having identified GCR as the main motif differentially-accessible across 
+conditions, we now want to know whether these differences are particularly at 
+sites that have both GCR and some other motif (or the opposite, particularly
+at sites that do not harbor the other motif). Computationally speaking, we 
+want to test whether the deviation differences at intersecting sites (i.e. 
+sites that harbor both motifs) are significantly larger (or smaller) than at 
+sites harboring either motif.
+
+To this end, we first compute deviations for the GCR sites, split according to
+whether they also harbor each of the other motifs (`both`), or not (`baitOnly`),
+as well as for the sites that have the other motif but no GCR motif 
+(`partnerOnly`):
+
+```{r, message=FALSE}
+idev <- getInteractionsDeviations(peakSE, motifMatches, bait="GCR", minCount=10)
+table(rowData(idev)$set)
+```
+
+Next, we test for a significant interaction with respect to the bait motif. For
+each partner motif, the interaction score is the difference between the 
+deviation at sites with both motifs, and the sum of the deviations at sites with
+each of the motifs alone (i.e. what would be expected if the two motifs acted 
+independently and additively, thereby taking into account the response of the 
+partner's own sites). We then test how this score differs between groups:
+
+```{r}
+res <- discoverMotifInteractions(idev, "group")
+head(res)
+```
+
+We could plot these results in a kind of volcano plot:
+
+```{r}
+library(ggplot2)
+ggplot(res, aes(difference, -log10(adj.P.Val), size=overlap.N, label=motif)) + 
+  geom_text() + theme_bw()
+```
+
+The `difference` column indicate by how much the response in the intersection 
+(e.g. in sites that have both the bait and its interacting motif) differs from 
+what is expected from the response in sites that have only one of the two 
+motifs, and the columns `diff.baitOnly`, `diff.partnerOnly` and `diff.both` 
+give the response in each set of sites. For example, since we established 
+earlier that the  treatment increases accessibility of GCR sites, and the 
+difference in the interaction with CTCFL is negative, we can conclude that 
+CTCFL appears to prevent GCR from having a positive impact. In contrast, sites 
+that have the JUND motif (in addition to GCR) appear to increase in 
+accessibility more than those that do not, in line with the known interaction 
+between GCR and JUN/FOS family members.
+
+Note that the p-values are meant to be used for ranking candidates rather than 
+as calibrated error rates -- they are far from calibrated (see below). 
+Moreover, since the classes of sites are aggregated, the p-values indicate 
+reflect the reproducibility across replicates, rather than the generalization 
+across sites. For a test that accounts for the variability across sites and 
+produces more calibrated p-values, see the last part of this vignette.
+
+## Investigating motif interactions through distance decay patterns
+
+Next, we will explore a bit more in depth those candidate interactions by 
+investigating their dependence on the distance between the two motifs. To this
+end, the `exploreMotifInteraction` function will produce deviations for the 
+sites harboring only GCR, only the candidate partner, or both at given distance
+intervals of each other.
+
+Computing this requires the motifs themselves and the genome sequence, e.g.
+^[To avoid having the genome as a dependency, the precomputed `didevs` are 
+included in the example data.] :
+
+```{r, eval=FALSE}
+library(BSgenome.Hsapiens.UCSC.hg38)
+
+# we precompute the betterChromVAR background to save computing time in case
+# we check many interactions:
+bg <- computeBackgrounds(peakSE, getBackgroundBins(peakSE))
+
+# `motifs` is a list of motifs (e.g. a PFMatrixList, as provided in the example
+# data); we look at two potential partners of GCR:
+didevs <- lapply(c(JUND="JUND", CTCFL="CTCFL"), \(mo){
+  exploreMotifInteraction(peakSE, motifs[c("GCR", mo)], bg = bg,
+                          genome=BSgenome.Hsapiens.UCSC.hg38)
+})
+```
+
+or each partner, we have deviations for
+different subsets of sites, which we melt into a data.frame for plotting:
+
+```{r, fig.width=10, fig.height=4}
+dd <- do.call(rbind, lapply(names(didevs), \(mo){
+  didev <- didevs[[mo]]
+  d <- data.frame(feature=rep(row.names(didev), ncol(didev)),
+                  group=rep(didev$group, each=nrow(didev)),
+                  norm=as.vector(SummarizedExperiment::assay(didev, "norm")))
+  d$feature <- factor(d$feature, row.names(didev))
+  d$query <- mo
+  d
+}))
+ggplot(dd, aes(feature, norm)) + geom_hline(yintercept=0, linetype="dashed") + 
+  geom_boxplot(aes(fill=group)) + facet_wrap(~query, scale="free") + 
+  theme_bw() + labs(x="Site type", y="Adjusted z-scores") + 
+  theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5))
+```
+
+On the left of the first panel, we see the change in deviation upon 
+ligand-based GCR activation (i.e. NR3C1 group vs CTRL) in sites harboring the 
+GCR motif (independently of JUND status). Beside it, we see the same in sites 
+harboring the JUND motif (independently of whether they also harbor a GCR motif),
+which show no difference between conditions. Next, we see GCR sites that are
+negative for JUND (which show a smaller impact that GCR sites more generally),
+followed by JUND sites negative for GCR (i.e. sites in which the other motif is
+neither present nor within the maximum distance). Finally, we see sites harboring both
+motifs, at difference ranges of distance from each other. The exact distances
+represent quantiles (so that each distance bin is equally populated) up to a 
+maximum distance specified by the user.
+
+We see that when sites have GCR and JUND motifs very close to each other, the 
+difference in deviation is larger (i.e. the effect of GCR activation on 
+accessibility is stronger), and that this decays with distance, as we would 
+expect of a bona fide interaction. If the interaction is a physical interaction 
+between the TFs, we would expect this to decay rapidly, otherwise it can decay
+more slowly.
+
+In contrast, the putative interaction (antagonism) with CTCFL shows an 
+inconsistent distance pattern: CTCFL appears to suppress the effect of GCR 
+activation both when close or distant to the GCR motif, but not in the middle 
+bin of 220-299bp. This makes the putative interaction less likely to be a 
+direct physical interaction, but does not exclude an indirect interaction.
+
+<br/><br/>
+
+# Peak-level analysis
+
+The analyses above use the *sets* of sites as the unit of observation: the
+deviation of a set is computed in each sample, and compared across samples. The
+p-values therefore reflect how reproducibly a set of (fixed) sites differs 
+between conditions, but not whether this generalizes across sites: a set of
+sites that is not special in any way will still have some reproducible 
+difference between conditions, simply because the sites respond differently
+from one another. An alternative is to use the peaks themselves as the unit of
+inference. This is what the `peakLevelMotifTests` and 
+`peakLevelMotifInteractions` functions do: the differential accessibility 
+(log2-fold-change) of each peak is first estimated, and these are then modeled 
+as a function of the presence of the motif(s) while adjusting for the peak's 
+accessibility and bias. The approach is related in spirit to motif activity 
+response analysis (MARA, implemented in ISMARA), which models the signal of 
+regulatory regions as a function of the motifs they harbor 
+[@balwierz2014ismara], but differs in that motifs are here tested separately 
+rather than jointly (for step-wise joint testing, see the 
+`stepwisePeakLevelMotifTests()` function).
+
+`peakLevelMotifInteractions` runs the differential analysis of the peaks itself,
+while `peakLevelMotifTests` takes as input the results of a peak-level 
+differential analysis provided by the user, along with the 
+`SummarizedExperiment` it was run on. Both methods regress the peaks' logFC on
+the presence of (one or combinations of) motif(s), as well as non-linear 
+technical covariates. In both cases, each peak is weighted by the inverse of its
+logFC variance (reflecting how robust the logFC is across samples), plus a 
+between-peak variance (taking the heterogeneity across sites harboring a motif
+into account). Finally, the variance is inflated to account for the 
+correlation between peaks, as done by `camera()` in the `r Biocpkg("limma")` 
+package.
+
+### Peak-level differential motif accessibility
+
+For each motif, `peakLevelMotifTests` tests whether the peaks harboring the 
+motif change more (or less) between conditions than comparable peaks that do 
+not harbor it. We first run a differential accessibility analysis of the peaks 
+(here using limma-voom, but this could be any other method), and then provide 
+its results to the function, along with the design matrix used to estimate the 
+correlation between peaks:
+
+```{r}
+design <- model.matrix(~group, data=as.data.frame(colData(peakSE)))
+y <- limma::voom(assay(peakSE), design)
+dea <- limma::topTable(limma::eBayes(limma::lmFit(y, design)), coef=2, number=Inf, sort.by="none")
+pk <- peakLevelMotifTests(peakSE, dea, motifMatches, design=design, 
+                          minCount=10)
+head(pk[,c("motif","N","difference","P.Value","adj.P.Val")])
+```
+
+Once more, the results indicate a strong response of the glucocorticoid receptor 
+(GCR) and the highly similar MCR motif, as expected.
+
+### Peak-level motif interactions
+
+Similarly, `peakLevelMotifInteractions` models the log-fold-change of the peaks
+as a function of the presence of the bait motif, of the partner motif, and of 
+their interaction:
+
+```{r}
+res2 <- peakLevelMotifInteractions(peakSE, motifMatches, bait="GCR", 
+                                   group="group", minCount=10)
+head(res2[,c("motif","overlap.N","difference","se","P.Value","adj.P.Val",
+             "partner.diff")])
+```
+
+In the above, `difference` is the interaction coefficient (on the log2 scale), 
+and `partner.diff` is the effect of the treatment at sites with only the 
+partner's motif.
+
+# Comparison of the deviation-based and peak-level approaches
+
+## Differential motif accessibility
+
+We first compare the motif-level statistics obtained from the deviations (using
+`fitDeviations`) to those of the peak-level approach:
+
+```{r, fig.width=5, fig.height=4}
+fit <- fitDeviations(dev, design)
+tt <- limma::topTable(fit, coef=2, number=Inf, sort.by="none")
+cmp1 <- merge(data.frame(motif=row.names(tt), t.deviations=tt$t, 
+                         FDR.deviations=tt$adj.P.Val),
+              data.frame(pk[,c("motif","N","t","adj.P.Val")]), by="motif")
+colnames(cmp1)[5:6] <- c("t.peaks", "FDR.peaks")
+ggplot(cmp1, aes(t.deviations, t.peaks, label=motif)) + 
+  geom_hline(yintercept=0, linetype="dashed") + 
+  geom_vline(xintercept=0, linetype="dashed") +
+  geom_point(aes(size=N), alpha=0.5) + geom_text(check_overlap=TRUE, vjust=-1) +
+  theme_bw() + labs(x="t-value (deviations)", y="t-value (peak-level)")
+```
+
+The two approaches are in close agreement.
+
+### Motif interactions
+
+A similar comparison for the two types of motif interactions analyses (both using
+GCR as a bait) :
+
+```{r, fig.width=5, fig.height=4}
+cmp2 <- merge(res[,c("motif","overlap.N","t","adj.P.Val")], 
+              res2[,c("motif","t","adj.P.Val")], by="motif",
+              suffixes=c(".sample",".peak"))
+ggplot(cmp2, aes(t.sample, t.peak, label=motif)) + 
+  geom_hline(yintercept=0, linetype="dashed") + 
+  geom_vline(xintercept=0, linetype="dashed") +
+  geom_point(aes(size=overlap.N), alpha=0.5) + 
+  geom_text(check_overlap=TRUE, vjust=-1) + theme_bw() + 
+  labs(x="t-value (sample-level)", y="t-value (peak-level)")
+```
+Again the statistics are fairly strongly correlated. However, the 
+deviation-based approach is much more liberal: it 
+identifies `r sum(cmp2$adj.P.Val.sample<0.05)` motifs at an FDR<0.05, versus 
+`r sum(cmp2$adj.P.Val.peak<0.05)` for the peak-level one 
+(`r sum(cmp2$adj.P.Val.sample<0.05 & cmp2$adj.P.Val.peak<0.05)` in common). 
+This is to be expected, since the deviation-based approach aggregates partially 
+overlapping sites, whereas the peak-level one takes into account the 
+heterogeneity of the signal across sites of a motif. Of the known interactors, 
+JUND shows a strong signal in the sample-level analysis, but only a nominal one at the 
+peak-level (P=`r signif(res2$P.Value[res2$motif=="JUND"],2)`). (Note that this
+example is a small dataset with few samples and a limited number of peaks.)
+
+### Behavior on random motifs
+
+To illustrate the difference in calibration, we repeat the analyses with random
+sets of peaks, which should not have any specific response nor interaction 
+with GCR. The following shows the proportion of these random motifs that are 
+nominally significant (P<0.05) with each approach:
+
+```{r}
+set.seed(1234)
+nr <- nrow(peakSE)
+rnd <- sapply(round(exp(runif(100, 6, 9))), function(n){
+  x <- logical(nr)
+  x[sample.int(nr, n)] <- TRUE
+  x
+})
+colnames(rnd) <- paste0("random", seq_len(ncol(rnd)))
+rnd <- cbind(GCR=as.vector(assay(motifMatches)[,"GCR"]), rnd)
+
+ridev <- getInteractionsDeviations(peakSE, rnd, bait="GCR")
+rres <- discoverMotifInteractions(ridev, "group")
+rres2 <- peakLevelMotifInteractions(peakSE, rnd, bait="GCR", group="group")
+
+data.frame(approach=c("deviations", "peak-level"),
+           `% p<0.05`=c(sum(rres$P.Value<0.05),
+                                 sum(rres2$P.Value<0.05)), check.names=FALSE)
+```
+
+Because these motifs have no true interaction with GCR, the proportion should 
+be around 5%. The deviation-based approach is therefore clearly too liberal, 
+while the peak-level approach is roughly calibrated. For these reasons, we 
+recommend using the peak-level approach to identify interactions, and use the 
+deviation-based approach only via `exploreMotifInteraction()` to investigate 
+the dependence on distance.
+
+
+## References
+
+::: {#refs}
+:::
+
+## Session info
+
+```{r sessionInfo, echo=FALSE}
+sessionInfo()
+```

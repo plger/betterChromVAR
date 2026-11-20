@@ -56,6 +56,14 @@ A SummarizedExperiment (or a list if \code{retSE=FALSE}).
 computeDeviationsAnalytic
 }
 \details{
+As in the original chromVAR, the background of each motif is expressed
+relative to its own expected total accessibility, i.e. the expected counts of
+the background peaks are rescaled so that their global expectation equals
+that of the motif's peaks (the first-order equivalent of dividing each
+background set by its own expected total). This matters mostly in
+high-depth data such as bulk, where it makes the results closer to those of
+chromVAR (use \code{fpc=FALSE} and \code{tol=NULL} to emulate it).
+
 \code{fpc} corrects correct the null variance used (as denominator) for the
 z-scores for the fact that the expectation of each cell is estimated from
 the cell's own counts, including in peaks containing the motif. This

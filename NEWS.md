@@ -1,3 +1,17 @@
+# betterChromVAR 1.1.15
+
+## New features
+* The background expectation of each motif is now rescaled so that its global 
+  expectation equals that of the motif's peaks (neglible effect in single-cell
+  data, better agreement with chromVAR in bulk data).
+* Motif interaction analysis, including functions moved from `weightedMotifAccess`
+  (and improved), as well as peak-level functions and a vignette.
+* `fitDeviations()` (moved from `weightedMotifAccess`)
+* `peakLevelMotifTests()` and `stepwisePeakLevelMotifTests()` as peak-logFC-based
+  alternative to the analysis of deviations.
+* Motif interaction analysis, including functions moved from `weightedMotifAccess`
+  (and improved), as well as peak-level functions and a vignette.
+
 # betterChromVAR 1.1.14
 
 ## New features
