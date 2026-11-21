@@ -7,12 +7,11 @@
 #' @param dev A SummarizedExperiment of motif deviations, as produced for
 #'   instance by \code{\link{betterChromVAR}}.
 #' @param design The design matrix of the experiment, as produced for instance 
-#'   by \code{\link[stats]{model.matrix}}, or a formula (e.g. `~group`), in 
-#'   which case \code{\link[stats]{model.matrix}} is called with the 
-#'   `colData` of `dev` as data.
-#' @param type The type of assay to use, either 'norm' (size-normalized 
-#'   z-scores), 'deviations' (background-adjusted motif deviations), or 'z' 
-#'   (z-scores).
+#'   by \code{\link[stats]{model.matrix}}, or a formula (e.g. `~group`)
+#'   using `colData` columsn of `dev`.
+#' @param type The type of assay to use, either 'deviations' (default, 
+#'   background-adjusted motif deviations), 'z' (z-scores), or 'norm' 
+#'   (set size-normalized z-scores).
 #' @param contrasts Optional contrasts, passed to 
 #'   \code{\link[limma]{contrasts.fit}}.
 #' @param robust Logical, passed to \code{\link[limma]{eBayes}}; whether the 
@@ -24,9 +23,7 @@
 #' function of the log of the effective number of matches of the motifs (`Neff`,
 #' or `N` for objects that lack it), consistent with the scaling used by
 #' \code{\link{normalizeDevsForSize}}. If there are fewer than 20 motifs, or 
-#' no variation in set sizes, no trend is used. For differential analysis that 
-#' uses the peaks (rather than the samples) as units of inference, see
-#' \code{\link{peakLevelMotifTests}}.
+#' no variation in set sizes, no trend is used.
 #' 
 #' @returns A fitted `MArrayLM` object, which can for instance be used with
 #'   limma's \code{\link[limma]{topTable}} function to extract differential
@@ -40,10 +37,13 @@
 #' dev <- betterChromVAR(dd$counts, dd$motifMatches)
 #' dev$group <- rep(LETTERS[1:2], each=5)
 #' fit <- fitDeviations(dev, ~group)
-#' # equivalent to:
+#' limma::topTable(fit)
+#' 
+#' # this is equivalent to:
 #' design <- stats::model.matrix(~group, data=SummarizedExperiment::colData(dev))
 #' fit <- fitDeviations(dev, design)
-fitDeviations <- function(dev, design, type=c("norm","deviations","z"),
+#' limma::topTable(fit)
+fitDeviations <- function(dev, design, type=c("deviations","norm","z"),
                           contrasts=NULL, robust=FALSE, ...){
   stopifnot(inherits(dev, "SummarizedExperiment"))
   stopifnot(!is.null(rowData(dev)$N) || !is.null(rowData(dev)$Neff))
