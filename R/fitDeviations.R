@@ -11,7 +11,10 @@
 #'   using `colData` columsn of `dev`.
 #' @param type The type of assay to use, either 'deviations' (default, 
 #'   background-adjusted motif deviations), 'z' (z-scores), or 'norm' 
-#'   (set size-normalized z-scores).
+#'   (set size-normalized z-scores). Deviations is recommended unless the
+#'   data is very sparse, in which case 'norm' could be better ('norm' and 'z'
+#'   should give the same significance, but the effect sizes are only 
+#'   comparable across motifs when using 'norm').
 #' @param contrasts Optional contrasts, passed to 
 #'   \code{\link[limma]{contrasts.fit}}.
 #' @param robust Logical, passed to \code{\link[limma]{eBayes}}; whether the 
