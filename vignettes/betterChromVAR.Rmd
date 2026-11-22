@@ -330,14 +330,14 @@ threshold a partial weight according to their score, and can be used as follows:
 ```{r graded, eval=FALSE}
 # given a list of motifs `pwms` and the corresponding genome:
 gradedMatches <- getGradedMatches(pwms, counts, genome=genome)
-dev2 <- betterChromVAR(counts, gradedMatches, ridge=3)
+dev2 <- betterChromVAR(counts, gradedMatches, ridge=2)
 ```
 
 While the two can be used independently, graded matches alone did not offer much
-improvement in our hands, and because they are much less sparse than standard 
-(i.e. binary) ones, they make the process heavier. Together with ridge 
-normalization, however, graded matches offered the best reduction in signal 
-spillover across motifs.
+improvement in our hands. Together with the `ridge` argument, they offer the 
+best reduction in signal spillover across motifs. This being said, because 
+graded matches are much less sparse than standard (i.e. binary) ones, they 
+make the process heavier, and their added improvement is minimal.
 
 # Smoothing the deviations of single cells across neighboring cells
 
