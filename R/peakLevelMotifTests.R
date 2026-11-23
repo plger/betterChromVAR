@@ -77,12 +77,9 @@
 #' \code{\link[limma]{camera}} (Wu and Smyth 2012), the variance of the 
 #' coefficients can be inflated to account for the average correlation between 
 #' the residuals of the peaks of a same set (estimated across samples from the 
-#' residuals of the model given by `design`; only the part exceeding the 
-#' correlation among all peaks is used, as the latter cancels out of the 
-#' contrast). If `design` is not given, an excess correlation can alternatively
-#' be assumed through `vif`. (Since the inflation grows with the number of peaks 
-#' of the motif, omitting it can make motifs with many peaks appear markedly 
-#' more significant than they should.)
+#' residuals of the model given by `design`, after removing the component 
+#' shared by all peaks. If `design` is not given, an excess correlation can 
+#' alternatively be assumed through `vif`.
 #' 
 #' Compared to the analysis of deviations, this test asks whether the sites of 
 #' a motif change more than other sites (generalizing across sites), rather
@@ -298,12 +295,15 @@ peakLevelMotifTests <- function(se, dea, annotation, design=NULL,
   covs <- do.call(cbind, covs)
   
   rhoAll <- 0
+  corDesign <- design
   if(isTRUE(vif)){
     E <- E[ok,,drop=FALSE]
-    rhoAll <- max(0, interGeneCorrelation(E, design)$correlation)
+    corDesign <- .corDesign(E, design)
+    rhoAll <- max(0, interGeneCorrelation(E, corDesign)$correlation)
   }
   pl <- list(v=if(isTRUE(vif)) list(E=E) else NULL, lfc=lfc[ok,,drop=FALSE], 
-             vr=sdv[ok,,drop=FALSE]^2, covs=covs, rhoAll=rhoAll, design=design)
+             vr=sdv[ok,,drop=FALSE]^2, covs=covs, rhoAll=rhoAll, design=design,
+             corDesign=corDesign)
   list(pl=pl, annotation=annotation[ok,,drop=FALSE], contrasts=names(tabs))
 }
 
@@ -311,7 +311,7 @@ peakLevelMotifTests <- function(se, dea, annotation, design=NULL,
 .motifRho <- function(pl, mm, vif){
   if(isFALSE(vif)) return(c(0,0))
   if(is.numeric(vif)) return(c(0,vif))
-  vapply(1:2, \(k) .excessCorrelation(pl$v$E, pl$design, which(mm==(k-1L)), 
+  vapply(1:2, \(k) .excessCorrelation(pl$v$E, pl$corDesign, which(mm==(k-1L)), 
                                       pl$rhoAll), numeric(1))
 }
 
@@ -328,7 +328,8 @@ peakLevelMotifTests <- function(se, dea, annotation, design=NULL,
     rho <- cached[[k]]
     if(is.null(rho)) rho <- .motifRho(pl, mm, vif)
     X <- cbind(1, mm, adj, pl$covs)
-    r <- tryCatch(.peakMetaRegression(pl$lfc[,ci], pl$vr[,ci], X, 1L+mm, rho),
+    r <- tryCatch(.peakMetaRegression(pl$lfc[,ci], pl$vr[,ci], X, 1L+mm, rho,
+                                   robust=TRUE),
                   error=function(e) NULL)
     if(is.null(r)){ # (e.g. a motif that is collinear with the adjustment)
       res <- data.frame(motif=m, N=sum(mm), difference=NA_real_, se=NA_real_,
@@ -485,7 +486,8 @@ stepwisePeakLevelMotifTests <- function(se, dea, annotation, design=NULL,
   anyS <- rowSums(S)>0
   X <- cbind(1, S, pl$covs)
   rho <- .motifRho(pl, anyS, vif)
-  r <- tryCatch(.peakMetaRegression(pl$lfc[,ci], pl$vr[,ci], X, 1L+anyS, rho),
+  r <- tryCatch(.peakMetaRegression(pl$lfc[,ci], pl$vr[,ci], X, 1L+anyS, rho,
+                                   robust=TRUE),
                 error=function(e) NULL)
   k <- length(sel)
   if(is.null(r)) 

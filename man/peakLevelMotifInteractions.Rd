@@ -90,9 +90,8 @@ separately for each of the four types of peaks, so that the heterogeneity of
 the response across sites is part of the uncertainty. In addition, as in
 \code{\link[limma]{camera}}, the variance of the coefficients is inflated to
 account for the average correlation between the residuals of the peaks
-of a same set (estimated across samples; only the part exceeding the
-correlation among all peaks is used, as the latter cancels out of the
-contrasts). P-values use a t-distribution with the number of peaks
+of a same set (estimated across samples, after removing the component shared
+by all peaks, which cancels out of the contrasts). P-values use a t-distribution with the number of peaks
 harboring both motifs minus one as degrees of freedom.
 
 The model is fitted separately for each partner, and treats the peaks

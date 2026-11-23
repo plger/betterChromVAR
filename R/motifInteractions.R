@@ -283,20 +283,37 @@ discoverMotifInteractions <- function(dev, group, covar=c(), global=FALSE,
   res
 }
 
+# Design used to estimate the correlation between peaks: the model design, to 
+# which the component shared by all peaks (the average, across peaks, of their 
+# standardized residuals) is added as a covariate. This shared component (e.g. 
+# sample-level noise) cancels out of the contrasts between sets of peaks, so it
+# should not enter the correlation. Leaving it in makes the estimate of the 
+# excess correlation of a set very noisy (its error grows with the size of the
+# shared component and, since the inflation is 1+(m-1)*rho, with the number of 
+# peaks m), and the truncation at 0 then turns this noise into a bias.
+.corDesign <- function(E, design){
+  # (at least two residual degrees of freedom are needed after removal)
+  if(ncol(E)-qr(design)$rank < 3L) return(design)
+  res <- t(lm.fit(design, t(E))$residuals)
+  res <- res/pmax(sqrt(rowSums(res^2)), 1e-8)
+  g <- colMeans(res)
+  if(sum(g^2)<1e-10) return(design)
+  cbind(design, sharedComponent=g)
+}
+
 # Estimates the mean correlation between peaks of the residuals of a linear
-# model, as in limma::camera, and returns the variance inflation factor.
+# model, as in limma::camera (see `.corDesign`), and returns the part exceeding
+# the average correlation `rhoAll` (about 0 when using `.corDesign`).
 .excessCorrelation <- function(E, design, idx, rhoAll=0){
   if(length(idx)<2) return(0)
   rho <- limma::interGeneCorrelation(E[idx,,drop=FALSE], design)$correlation
-  # the component shared by all peaks (e.g. sample-level noise) cancels out of
-  # the contrasts between sets, so only the excess is relevant
   min(0.99, max(0, rho-rhoAll))
 }
 
 # Weighted regression of logFC across peaks with random-effect heterogeneity
 # (per cell) and a correlation-based variance inflation (per cell):
 #   y_p = x_p' beta + e_p, var(e_p)=v_p+tau_c^2, cor(e_p,e_q)=rho_c (same cell c)
-.peakMetaRegression <- function(y, v, X, cell, rho, nIter=2L){
+.peakMetaRegression <- function(y, v, X, cell, rho, nIter=2L, robust=FALSE){
   ncell <- length(rho)
   tau2 <- rep(0, ncell)
   for(i in seq_len(nIter+1L)){
@@ -311,8 +328,16 @@ discoverMotifInteractions <- function(dev, group, covar=c(), global=FALSE,
       max(0, mean(r[j]^2-v[j])*length(j)/(length(j)-1))
     }, numeric(1))
   }
-  # sandwich variance, with the correlation structure within each cell
+  # sandwich variance, with the correlation structure within each cell. The
+  # variance of the peaks is either the one assumed by the model (v+tau2), or,
+  # if `robust`, estimated from the residuals (HC2, i.e. with a leverage-based
+  # small-sample correction), which does not depend on the variance model.
   meat <- XtWX
+  if(robust){
+    r <- as.numeric(y-X%*%beta)
+    h <- pmin(0.99, w*rowSums((X%*%solve(XtWX))*X))
+    meat <- crossprod(X*(w*r/sqrt(1-h)))
+  }
   for(k in which(rho>0)){
     j <- which(cell==k)
     a <- X[j,,drop=FALSE]*(w[j]*sqrt(v[j]))
@@ -346,8 +371,13 @@ discoverMotifInteractions <- function(dev, group, covar=c(), global=FALSE,
   covs <- do.call(cbind, covs)
   
   rhoAll <- 0
-  if(vif) rhoAll <- max(0, interGeneCorrelation(v$E, dm$design)$correlation)
-  list(v=v, lfc=lfc, vr=vr, covs=covs, rhoAll=rhoAll, design=dm$design)
+  corDesign <- dm$design
+  if(vif){
+    corDesign <- .corDesign(v$E, dm$design)
+    rhoAll <- max(0, interGeneCorrelation(v$E, corDesign)$correlation)
+  }
+  list(v=v, lfc=lfc, vr=vr, covs=covs, rhoAll=rhoAll, design=dm$design,
+       corDesign=corDesign)
 }
 
 #' peakLevelMotifInteractions
@@ -401,9 +431,8 @@ discoverMotifInteractions <- function(dev, group, covar=c(), global=FALSE,
 #' the response across sites is part of the uncertainty. In addition, as in
 #' \code{\link[limma]{camera}}, the variance of the coefficients is inflated to
 #' account for the average correlation between the residuals of the peaks
-#' of a same set (estimated across samples; only the part exceeding the
-#' correlation among all peaks is used, as the latter cancels out of the
-#' contrasts). P-values use a t-distribution with the number of peaks
+#' of a same set (estimated across samples, after removing the component shared
+#' by all peaks, which cancels out of the contrasts). P-values use a t-distribution with the number of peaks
 #' harboring both motifs minus one as degrees of freedom.
 #'
 #' The model is fitted separately for each partner, and treats the peaks
@@ -484,7 +513,7 @@ peakLevelMotifInteractions <- function(se, annotation, bait, group, covar=c(),
     cell <- 1L + ab + 2L*pp  # 1: neither, 2: bait only, 3: partner only, 4: both
     X <- cbind(1, ab, pp, ab*pp, covs)
     rho <- rep(0, 4)
-    if(vif) rho <- vapply(1:4, \(k) .excessCorrelation(v$E, dm$design,
+    if(vif) rho <- vapply(1:4, \(k) .excessCorrelation(v$E, pl$corDesign,
                                                         which(cell==k), rhoAll),
                           numeric(1))
     n <- sum(cell==4L)

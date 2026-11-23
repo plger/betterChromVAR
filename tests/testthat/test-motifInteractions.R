@@ -422,7 +422,9 @@ local({
   test_that("stepwisePeakLevelMotifTests works on the example data", {
     st <- stepwisePeakLevelMotifTests(peakSE, d$dea, motifMatches, 
                                       design=d$design, minCount=10)
-    expect_true(all(st$selected$motif[1:2] %in% c("GCR","MCR")))
+    # (the near-identical GCR and MCR motifs are both selected)
+    expect_equal(st$selected$motif[1], "GCR")
+    expect_true("MCR" %in% st$selected$motif)
     expect_true(all(st$selected$step==seq_len(nrow(st$selected))))
     r <- peakLevelMotifTests(peakSE, d$dea, motifMatches, design=d$design, 
                              minCount=10)
@@ -431,6 +433,29 @@ local({
     expect_false(any(st$selected$motif %in% st$remaining$motif))
     expect_error(stepwisePeakLevelMotifTests(peakSE, d$dea, motifMatches, 
                                              alpha=2))
+  })
+  
+  test_that("the robust variance does not depend on the assumed variance model", {
+    f <- betterChromVAR:::.peakMetaRegression
+    set.seed(1)
+    n <- 6000
+    v <- runif(n, 0.01, 0.1)
+    mm <- runif(n)<0.2
+    X <- cbind(1, mm)
+    cell <- 1L+mm
+    # variance as assumed by the model: both estimates agree
+    y <- rnorm(n, 0, sqrt(v+0.02))
+    a <- f(y, v, X, cell, c(0,0)); b <- f(y, v, X, cell, c(0,0), robust=TRUE)
+    expect_equal(a$beta, b$beta)
+    expect_equal(sqrt(b$vcov[2,2]), sqrt(a$vcov[2,2]), tolerance=0.15)
+    # residual variance 4 times larger than the one assumed for the weights: 
+    # only the robust estimate follows (the heterogeneity estimate is not
+    # enough to absorb it, as it is additive)
+    y <- rnorm(n, 0, 2*sqrt(v))
+    a <- f(y, v, X, cell, c(0,0)); b <- f(y, v, X, cell, c(0,0), robust=TRUE)
+    emp <- sd(replicate(200, {
+      y <- rnorm(n, 0, 2*sqrt(v)); f(y, v, X, cell, c(0,0))$beta[2]}))
+    expect_equal(sqrt(b$vcov[2,2]), emp, tolerance=0.2)
   })
   
   test_that("adjustWidth adds a width covariate", {

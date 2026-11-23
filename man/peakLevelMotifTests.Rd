@@ -115,12 +115,9 @@ the response across sites is part of the uncertainty. In addition, as in
 \code{\link[limma]{camera}} (Wu and Smyth 2012), the variance of the
 coefficients can be inflated to account for the average correlation between
 the residuals of the peaks of a same set (estimated across samples from the
-residuals of the model given by \code{design}; only the part exceeding the
-correlation among all peaks is used, as the latter cancels out of the
-contrast). If \code{design} is not given, an excess correlation can alternatively
-be assumed through \code{vif}. (Since the inflation grows with the number of peaks
-of the motif, omitting it can make motifs with many peaks appear markedly
-more significant than they should.)
+residuals of the model given by \code{design}, after removing the component
+shared by all peaks. If \code{design} is not given, an excess correlation can
+alternatively be assumed through \code{vif}.
 
 Compared to the analysis of deviations, this test asks whether the sites of
 a motif change more than other sites (generalizing across sites), rather
