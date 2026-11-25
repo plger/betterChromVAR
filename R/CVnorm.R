@@ -4,6 +4,19 @@
 #' (GC/accessibility) using the chromVAR background binning approach and an 
 #' optional variance-based bias shrinkage (inspired from the qsmooth package) 
 #' to preserve group biological signal.
+#' 
+#' @details
+#' Strong biological differences between groups, or differences thare are 
+#' GC-biased or accessibility-biased, can be confounded with the bias bins. 
+#' To mitigate this, it is strongly recommended to use the smoothed version 
+#' of the function (i.e. pass a `grouping` argument, or directly a 
+#' `smoothGrouping`), so that bin differences that are explained by the groups
+#' are less corrected.
+#' If the differences between groups are very large, or correlated with the 
+#' technical bias (in which case a warning will be produced), and/or if the sample
+#' sizes are large (e.g. >6/group), `GCQN()` normalization (Van den Berge et al.
+#' 2022; see the \code{\link{GCQN}} function) might give better and safer 
+#' results.
 #'
 #' @param object A matrix of counts, or a SummarizedExperiment-like object with
 #'   an assay named 'counts'.
@@ -24,9 +37,9 @@
 #'   bias is entirely explained by groups. `shrinkMode="qsmooth"` instead 
 #'   reproduces the logic of the `qsmooth` package: if variance in bias is 
 #'   chiefly explained by groups, between group bias will not be corrected, but
-#'   within-group differences will be. Using this prior to differential analysis
-#'   however leads to increase Type I error rate, and it should therefore not be
-#'   used for downstream application.
+#'   within-group differences will be. Using `shrinkMode="qsmooth"` prior to 
+#'   differential analysis however leads to increase Type I error rate, and it 
+#'   should therefore not be used for such downstream application.
 #' @param toAssay The name of the assay in which to store the corrected data 
 #'   (default 'corrected'). Ignored unless `object` is a 
 #'   SummarizedExperiment-like object.
@@ -45,12 +58,17 @@
 #'   expected counts when computing the bias factor. This shrinks towards 1 
 #'   (no correction) the factors of the bins whose neighborhood contains too 
 #'   few reads to estimate them.
-#' @param maxShare Passed to \code{\link{getBackgroundBins}}: the maximum share
-#'   that a peak can have in the expectation of its own background.
+#' @param minCount Passed to \code{\link{getBackgroundBins}}: the minimum 
+#'   (kernel-weighted) number of peaks in the background of each bias bin; the
+#'   kernel is widened for sparsely-populated bins. `NULL` to disable.
+#' @param maxShare Deprecated and ignored; use `minCount` instead.
 #' @param loo Logical; whether to compute the expectation of each peak without 
 #'   the peak itself (leave-one-out). This is recommended to avoid correcting
 #'   away real signal from peaks that dominate their bias bin, but is a bit more 
 #'   memory-intensive.
+#' @param warnWeight A warning is issued when the peak-weighted mean dampening
+#'   weight (see Details) is below this value (default 0.25). Use `NULL` to 
+#'   disable the warning.
 #' @author Pierre-Luc Germain
 #' @references
 #'   - Schep A.N., Wu B., Buenrostro J.D., Greenleaf W.J. (2017) chromVAR: 
@@ -59,6 +77,13 @@
 #'   - Hicks SC, Okrah K, Paulson JN, Quackenbush J, Irizarry RA, Corrado
 #'     Bravo H (2018). “Smooth quantile normalization.” Biostatistics 19 (2),
 #'     doi: 10.1093/biostatistics/kxx028
+#'   - Wang J, Sonder E, Domcke S, Robinson M, Germain P (2026). Addressing 
+#'     technical variations in ATAC-seq data and improving motif accessibility 
+#'     analyses. bioRxiv, doi: 10.64898/2026.08.21.746151
+#'   - Van den Berge K., Chou H.J., Roux de Bezieux H., Street K., Risso D., 
+#'     Ngai J., Dudoit S. (2022) Normalization benchmark of ATAC-seq datasets
+#'     shows the importance of accounting for GC-content effects, Cell Reports
+#'     Methods 2(11):100321, doi: 10.1016/j.crmeth.2022.100321
 #'     
 #' @return If `object` is a matrix, then a matrix of corrected counts of the 
 #'   same dimensions. If `object` is a SummarizedExperiment-like object, then
@@ -75,7 +100,11 @@
 CVnorm <- function(object, bias=NULL, grouping=NULL, smoothGrouping=grouping, 
                    shrinkMode=c("dampen", "qsmooth"), toAssay="corrected",
                    bs=NULL, w=0.1, Z=FALSE, useWidthAdj=NULL, loo=TRUE, 
-                   enforceZeros=TRUE, pseudoCount=1, maxShare=0.1){
+                   enforceZeros=TRUE, pseudoCount=1, minCount=10, maxShare=NULL,
+                   warnWeight=0.25){
+  if(!is.null(maxShare))
+    warning("`maxShare` is deprecated and ignored; use `minCount` instead.",
+            call.=FALSE)
   
   # input validity
   if(!isFALSE(useWidthAdj) && 
@@ -119,7 +148,7 @@ CVnorm <- function(object, bias=NULL, grouping=NULL, smoothGrouping=grouping,
     expectation2 <- useWidthAdj*expectation/pmax(wi, useWidthAdj)
   }
   background <- getBackgroundBins(expectation2, bias=bias, flbias=flbias, w=w, 
-                                  bs=bs, maxShare=maxShare, verbose=FALSE)
+                                  bs=bs, minCount=minCount, verbose=FALSE)
   bin_map <- background@peak2bin
   binBinProbs <- background@binBinProbs
   bin2peakMat <- sparseMatrix(i=bin_map, j=seq_along(expectation), 
@@ -173,6 +202,19 @@ CVnorm <- function(object, bias=NULL, grouping=NULL, smoothGrouping=grouping,
     
     weights <- MSW / (MSW + MSB + 1e-12)
     if(shrinkMode == "dampen") biasWeights <- as.numeric(weights)
+    if(!is.null(warnWeight)){
+      n_peaks <- tabulate(bin_map, nbins=length(weights))
+      meanWeight <- sum(weights*n_peaks)/sum(n_peaks)
+      if(meanWeight < warnWeight)
+        warning("The groups explain much of the variation in the bin-level ",
+                "bias factors (peak-weighted mean dampening weight: ", 
+                round(meanWeight,2), "), so the correction is largely ",
+                "withheld. This is expected if the bias is group-related, but ",
+                "also happens when strong group differences shift the bias ",
+                "factors of the bins (e.g. differences linked to ",
+                "accessibility), in which case technical bias is left in the ",
+                "data. See ?CVnorm.", call.=FALSE)
+    }
     
     if(shrinkMode == "qsmooth"){
       # Subtract the sample-specific noise (log_R - group_mean) 
@@ -222,7 +264,6 @@ CVnorm <- function(object, bias=NULL, grouping=NULL, smoothGrouping=grouping,
   assay(object, toAssay) <- out
   return(object)
 }
-
 
 # Leave-one-out adjustment of the expected counts of CVnorm.
 .looExpected <- function(expected, counts, obs, exp_u, P, bin_map, peak_p, cs,

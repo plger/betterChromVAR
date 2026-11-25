@@ -10,11 +10,12 @@ getBackgroundBins(
   flbias = NULL,
   w = 0.1,
   bs = NULL,
-  maxShare = 0.1,
+  minCount = 10,
   maxWidthFactor = 4,
   pseudo = 0,
   tol = 0.001,
-  verbose = TRUE
+  verbose = TRUE,
+  maxShare = NULL
 )
 }
 \arguments{
@@ -40,13 +41,15 @@ number of bins for, in order: enrichment, GC and fragment length. By
 default, \code{bs=50} if \code{flbias} is not provided (mimicking chromVAR), and
 \code{bs=c(30, 30, 6)} if it is.}
 
-\item{maxShare}{Optional maximum share that a peak can have in the
-expectation of its own background. If not NULL, the width of the kernel is
-increased (up to \code{maxWidth} times \code{w}) for the bins that would otherwise
-exceed it, so that sparsely-populated bins draw more from their neighbors.}
+\item{minCount}{Minimum number of peaks that the background of a bin should
+draw from. The width of the kernel of the bins that contain fewer than
+\code{minCount} peaks is increased until it is reached, or up to
+\code{maxWidthFactor} times \code{w}), so that sparsely-populated bins draw more
+from their neighbors. Use \code{minCount=NULL} (or 0) to reproduce the
+traditional chromVAR sampling.}
 
 \item{maxWidthFactor}{The maximum factor by which \code{w} can be multiplied when
-\code{maxShare} is used.}
+\code{minCount} is used.}
 
 \item{pseudo}{Optional pseudocount to be added. This should not be needed
 with standard workflows.}
@@ -57,6 +60,8 @@ each bin is used in the background of the others. Use \code{tol=NULL} to
 disable the balancing.}
 
 \item{verbose}{Whether to print processing info.}
+
+\item{maxShare}{Deprecated and ignored; use \code{minCount} instead.}
 }
 \value{
 A \code{bcvBackground} object, to be used with

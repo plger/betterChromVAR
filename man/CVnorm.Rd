@@ -18,7 +18,9 @@ CVnorm(
   loo = TRUE,
   enforceZeros = TRUE,
   pseudoCount = 1,
-  maxShare = 0.1
+  minCount = 10,
+  maxShare = NULL,
+  warnWeight = 0.25
 )
 }
 \arguments{
@@ -45,9 +47,9 @@ values.}
 bias is entirely explained by groups. \code{shrinkMode="qsmooth"} instead
 reproduces the logic of the \code{qsmooth} package: if variance in bias is
 chiefly explained by groups, between group bias will not be corrected, but
-within-group differences will be. Using this prior to differential analysis
-however leads to increase Type I error rate, and it should therefore not be
-used for downstream application.}
+within-group differences will be. Using \code{shrinkMode="qsmooth"} prior to
+differential analysis however leads to increase Type I error rate, and it
+should therefore not be used for such downstream application.}
 
 \item{toAssay}{The name of the assay in which to store the corrected data
 (default 'corrected'). Ignored unless \code{object} is a
@@ -79,8 +81,15 @@ expected counts when computing the bias factor. This shrinks towards 1
 (no correction) the factors of the bins whose neighborhood contains too
 few reads to estimate them.}
 
-\item{maxShare}{Passed to \code{\link{getBackgroundBins}}: the maximum share
-that a peak can have in the expectation of its own background.}
+\item{minCount}{Passed to \code{\link{getBackgroundBins}}: the minimum
+(kernel-weighted) number of peaks in the background of each bias bin; the
+kernel is widened for sparsely-populated bins. \code{NULL} to disable.}
+
+\item{maxShare}{Deprecated and ignored; use \code{minCount} instead.}
+
+\item{warnWeight}{A warning is issued when the peak-weighted mean dampening
+weight (see Details) is below this value (default 0.25). Use \code{NULL} to
+disable the warning.}
 }
 \value{
 If \code{object} is a matrix, then a matrix of corrected counts of the
@@ -92,6 +101,19 @@ Corrects ATAC peak counts by removing the effects of technical biases
 (GC/accessibility) using the chromVAR background binning approach and an
 optional variance-based bias shrinkage (inspired from the qsmooth package)
 to preserve group biological signal.
+}
+\details{
+Strong biological differences between groups, or differences thare are
+GC-biased or accessibility-biased, can be confounded with the bias bins.
+To mitigate this, it is strongly recommended to use the smoothed version
+of the function (i.e. pass a \code{grouping} argument, or directly a
+\code{smoothGrouping}), so that bin differences that are explained by the groups
+are less corrected.
+If the differences between groups are very large, or correlated with the
+technical bias (in which case a warning will be produced), and/or if the sample
+sizes are large (e.g. >6/group), \code{GCQN()} normalization (Van den Berge et al.
+2022; see the \code{\link{GCQN}} function) might give better and safer
+results.
 }
 \examples{
 counts_se <- getDummyData()$counts
@@ -107,6 +129,13 @@ single-cell epigenomic data, Nature Methods, doi: 10.1038/nmeth.4401
 \item Hicks SC, Okrah K, Paulson JN, Quackenbush J, Irizarry RA, Corrado
 Bravo H (2018). “Smooth quantile normalization.” Biostatistics 19 (2),
 doi: 10.1093/biostatistics/kxx028
+\item Wang J, Sonder E, Domcke S, Robinson M, Germain P (2026). Addressing
+technical variations in ATAC-seq data and improving motif accessibility
+analyses. bioRxiv, doi: 10.64898/2026.08.21.746151
+\item Van den Berge K., Chou H.J., Roux de Bezieux H., Street K., Risso D.,
+Ngai J., Dudoit S. (2022) Normalization benchmark of ATAC-seq datasets
+shows the importance of accounting for GC-content effects, Cell Reports
+Methods 2(11):100321, doi: 10.1016/j.crmeth.2022.100321
 }
 }
 \author{

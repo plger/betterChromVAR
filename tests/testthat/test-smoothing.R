@@ -235,50 +235,25 @@ test_that("smoothDeviationsKNN handles undefined noise values", {
   expect_true(all(is.finite(assay(sm, "smoothed.z"))))
 })
 
-test_that("computeMotifReliability works", {
+test_that("computeMotifVariability gives the reliability", {
   set.seed(3)
   nC <- 400
-  nM <- 6
-  # the first motif varies between cells (sd 0.5), the others do not; all with 
-  # noise (sd 0.2-0.6, varying between cells)
-  sdn <- matrix(runif(nM*nC, 0.2, 0.6), nM, nC)
+  nM <- 4
+  # the first motif varies between cells (sd 0.5), the others do not
+  sdn <- 0.4
   truth <- matrix(0, nM, nC)
   truth[1,] <- rnorm(nC, sd=0.5)
-  dv <- truth + matrix(rnorm(nM*nC), nM, nC)*sdn
-  se <- SummarizedExperiment(list(deviations=dv, z=dv/sdn))
-  rownames(se) <- paste0("m", 1:nM)
-  rel <- computeMotifReliability(se)
-  expect_s3_class(rel, "data.frame")
-  expect_equal(rownames(rel), rownames(se))
-  expect_equal(colnames(rel), c("reliability", "reliability.se", 
-                                "reliability.pval", "reliability.adjPval"))
-  expect_true(all(rel$reliability>=0 & rel$reliability<=1))
-  expect_gt(rel$reliability[1], 0.5)
-  expect_lt(max(rel$reliability[-1]), 0.2)
-  # the true reliability (weighted by the precision of the cells)
-  w <- 1/sdn[1,]^2
-  tv <- sum(w*(truth[1,]-sum(w*truth[1,])/sum(w))^2)/sum(w)
-  expect_equal(rel$reliability[1], tv/(tv + sum(w*sdn[1,]^2)/sum(w)), 
-               tolerance=0.15)
-  # unweighted version and kappa
-  rel2 <- computeMotifReliability(se, cellWeights=FALSE)
-  expect_gt(rel2$reliability[1], max(rel2$reliability[-1]))
-  expect_equal(computeMotifReliability(se, kappa=data.frame(kappa=rep(1, nM))), 
-               rel)
-  expect_lt(computeMotifReliability(se, kappa=0.5)$reliability[1] -
-              rel$reliability[1], 1)
-  expect_gt(computeMotifReliability(se, kappa=0.5)$reliability[1], 
-            rel$reliability[1])
-  # blocks of motifs do not matter
-  expect_equal(computeMotifReliability(se, chunkSize=2), rel)
-  # undefined noise variances are ignored
-  z <- assay(se, "z")
-  z[1,3] <- 0
-  assay(se, "z") <- z
-  expect_false(anyNA(computeMotifReliability(se)))
-  expect_error(computeMotifReliability(se, kappa=-1))
-  expect_error(computeMotifReliability(se, cellWeights="a"))
-  expect_error(computeMotifReliability(SummarizedExperiment(list(deviations=dv))))
+  dv <- truth + matrix(rnorm(nM*nC, sd=sdn), nM, nC)
+  rownames(dv) <- paste0("m", 1:nM)
+  r <- computeMotifVariability(dv/sdn)
+  expect_true(all(r$reliability>=0 & r$reliability<=1))
+  expect_equal(r$reliability, pmax(0, 1-1/r$variability^2))
+  # true reliability: 0.25/(0.25+0.16)
+  expect_equal(r$reliability[1], 0.25/(0.25+sdn^2), tolerance=0.1)
+  expect_lt(max(r$reliability[-1]), 0.2)
+  # is also in the output of the main functions
+  dev <- betterChromVAR(counts, motifMatches)
+  expect_true("reliability" %in% colnames(rowData(dev)))
 })
 
 test_that("computeDeviationsWeighted is consistent with the unweighted version", {
@@ -297,7 +272,9 @@ test_that("computeDeviationsWeighted is consistent with the unweighted version",
 
 })
 
-test_that("the significance of the reliability is calibrated and powerful", {
+.vr <- function(se) as.data.frame(rowData(computeMotifVariability(se)))
+
+test_that("the significance of the variability is calibrated and powerful", {
   set.seed(11)
   nC <- 300
   nM <- 400
@@ -306,12 +283,12 @@ test_that("the significance of the reliability is calibrated and powerful", {
   sdn <- matrix(runif(nM*nC, 0.2, 1.5), nM, nC) * rep(exp(rnorm(nC, sd=0.5)), each=nM)
   noise <- matrix(rt(nM*nC, df=8)/sqrt(8/6), nM, nC)*sdn
   se0 <- SummarizedExperiment(list(deviations=noise, z=noise/sdn))
-  rel0 <- computeMotifReliability(se0)
-  expect_true(all(rel0$reliability.pval >= 0 & rel0$reliability.pval <= 1))
+  rel0 <- .vr(se0)
+  expect_true(all(rel0$var.pval >= 0 & rel0$var.pval <= 1))
   # roughly uniform p-values under the null hypothesis
-  expect_lt(mean(rel0$reliability.pval < 0.05), 0.09)
-  expect_gt(mean(rel0$reliability.pval < 0.05), 0.02)
-  expect_lt(mean(rel0$reliability.adjPval < 0.05), 0.02)
+  expect_lt(mean(rel0$var.pval < 0.05), 0.09)
+  expect_gt(mean(rel0$var.pval < 0.05), 0.02)
+  expect_lt(mean(rel0$var.adjPval < 0.05), 0.02)
   # motifs whose activity truly varies are detected, in proportion to their 
   # reliability
   truth <- matrix(0, nM, nC)
@@ -320,17 +297,10 @@ test_that("the significance of the reliability is calibrated and powerful", {
   truth[41:60,] <- rnorm(20*nC, sd=0.25)
   se1 <- SummarizedExperiment(list(deviations=noise+truth, 
                                    z=(noise+truth)/sdn))
-  rel1 <- computeMotifReliability(se1)
-  expect_true(all(rel1$reliability.adjPval[1:40] < 1e-3))
-  expect_gt(mean(rel1$reliability.adjPval[41:60] < 0.05), 0.2)
-  expect_lt(mean(rel1$reliability.adjPval[-(1:60)] < 0.05), 0.02)
+  rel1 <- .vr(se1)
+  expect_true(all(rel1$var.adjPval[1:40] < 1e-3))
+  expect_gt(mean(rel1$var.adjPval[41:60] < 0.05), 0.2)
+  expect_lt(mean(rel1$var.adjPval[-(1:60)] < 0.05), 0.02)
   expect_gt(mean(rel1$reliability[1:20]), mean(rel1$reliability[21:40]))
   expect_gt(mean(rel1$reliability[21:40]), mean(rel1$reliability[41:60]))
-  # does not depend on the weighting
-  expect_equal(computeMotifReliability(se1, cellWeights=FALSE)$reliability.pval,
-               rel1$reliability.pval)
-  # a too large noise variance (kappa) is anti-conservative in the other 
-  # direction (it makes motifs less significant)
-  expect_true(all(computeMotifReliability(se1, kappa=2)$reliability.pval[41:60]
-                  >= rel1$reliability.pval[41:60]))
 })

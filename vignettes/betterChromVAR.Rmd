@@ -143,23 +143,22 @@ The resulting `dev` object is a SummarizedExperiment with the same
 columns (and colData) as the original `counts` object, but with the
 motifs as rows (instead of the original peaks). The values can be
 interpreted as the relative activity, across samples or cells, of the
-corresponding TFs[^5]. When the function is used with `fpc=FALSE` (and 
-otherwise default arguments) the results are virtually the same as the original 
-chromVAR (averaging over the noise coming from the random seeds). `fpc=TRUE`
-(default), it includes an additional finite-population correction which 
-affects motifs matching a large fraction of the peaks 
-(see the `fpc` argument of `computeDeviationsAnalytic()`).
+corresponding TFs[^5]. When the function is used with `fpc=FALSE, minCount=NULL`
+(and otherwise default arguments) the results are virtually the same as the 
+original chromVAR (averaging over the noise coming from the random seeds).
 
 [^5]: Note, however, that similar motifs will be given similar activity
     estimates, so that it is often hard to know which of a set of
     highly-similar motifs is in fact responsible for the observed
     signal.
 
-The object contains two assays: the `deviations` assay contains the
+The output object contains two assays: the `deviations` assay contains the
 bias-adjusted deviations from the expectation (by default, the average),
 i.e. the difference to the expectation divided by the expectation, and
 the `z` assay contains z-scores, i.e. the difference to the expectation
-divided by the variance of the expectation.
+divided by the variance of the expectation. It also contains, in `rowData(dev)`,
+statistics about each motif, including its variability, which can be used to
+select informative motifs.
 
 If your samples/cells have similar library sizes, it is recommended that
 you use the `z` assay for downstream analysis (such as differential TF
@@ -263,44 +262,6 @@ way), make sure to use this procedure. In recent versions,
 quite likely that better performance for this step would be obtained
 using for instance using the `aggregateAcrossCells()` function of the
 `r Biocpkg("scrapper")` package.
-
-## Motif variability and reliability
-
-The variability of each motif across the dataset is stored in the
-rowData of the output of `betterChromVAR()` :
-
-```{r variability}
-rowData(dev)
-```
-
-This is comparable to the variability produced by the original `chromVAR`,
-however the confidence intervals are analytic estimates. While these are 
-generally good enough, it is also possible to obtain bootstrap confidence 
-intervals (as in the original approach) through the 
-`computeMotifVariability()` function.
-
-An alternative way to assess how useful or informative motifs are is how 
-reliably they capture biological variation. This can be estimated by the 
-proportion of their variance across cells that is not attributable to sampling 
-noise. The `estimateNoiseKappa()` function can be used to assess this:
-
-```{r reliability}
-motifRel <- estimateNoiseKappa(counts, annotation=motifMatches, background=bg)
-head(motifRel)
-```
-
-While in practice reliability and variability of a motif are correlated, they
-do not track the same thing, even in this toy example:
-
-```{r motifComparison}
-cor(rowData(dev)$variability, motifRel$reliability)
-```
-
-Two motifs can have the same reliability while having very different 
-variability (e.g. a reliably quantified motif accessibility that does not vary
-much), or the converse. Both are therefore relevant information in selecting 
-useful motifs.
-
 
 # Decorrelating motifs that share peaks
 
@@ -408,10 +369,15 @@ it is on the original count scale (although not integer anymore), so that it is
 amenable to use in downstream count-based analysis methods such as 
 `r Biocpkg("edgeR")`.
 
-Smoothing is generally the safest approach, although it is often not necessary
-when the differences between groups are not very large. When they are, however,
-or are strongly GC-biased, not smoothing can lead to `CVnorm()` correcting away 
-some of the biological differences.
+Smoothing (i.e. providing a grouping argument) is generally the safest approach.
+Note that `CVnorm()` underperforms when the differences between groups are
+very large, or when the they are highly localized in the bias space (e.g. when
+the treatment affects GC-rich regions or high-accessibility regions). In those 
+circumstances, `CVnorm()` will tend to correct away the biological effects, 
+which the smoothing prevents. The smoothing, however, will not correct technical
+bias that, by chance, vary with the experimental group, thus undercorrecting. In
+those cases, `CVnorm()` will emit a warning, and the use of an alternative such
+as `GCQN()` [@van2022normalization] is recommended.
 
 # betterChromVAR with kNN-based background
 
@@ -433,7 +399,7 @@ feature is that rather than taking the transformed bias space directly to
 compute distances, we weight the different dimensions by their correlation with
 peak overdispersion.
 
-The kNN version of betterChromVAR can be used in the following way:
+The kNN version of `r Biocpkg("betterChromVAR")` can be used in the following way:
 
 ```{r}
 bg <- getBackgroundKNN(counts)
@@ -441,12 +407,13 @@ dev <- computeDeviationsFromKNN(counts, bg, motifMatches)
 ```
 
 We note, however, that this approach is considerably slower (although still 
-substantially faster than the original chromVAR or the ArchR re-implementation),
-requires more memory, and, at the single-cell level, produces slightly more 
-variable deviations across replicate cells [@Wang2026].
-We therefore recommend using the more scalable bin-based variant, unless 
-working with bulk data with fragment length bias (or any other extra bias 
-dimensions, see the `bias` argument of `getBackgroundKNN()`).
+substantially faster than the original chromVAR or the ArchR re-implementation)
+and requires more memory. We therefore recommend using the more scalable 
+bin-based variant, unless working with bulk data with fragment length bias (or 
+any other extra bias dimensions, see the `bias` argument of 
+`getBackgroundKNN()`). If a GPU is available, the GPU implementation from 
+[scPRINTER](https://github.com/buenrostrolab/scPrinter) (from which the 
+kNN-based approach is inspired) is more scalable.
 
 # Appendix
 

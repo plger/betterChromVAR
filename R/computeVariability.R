@@ -1,5 +1,9 @@
 #' computeMotifVariability
 #'
+#' Computes the variability of the single-cell motif scores (the standard 
+#' deviation of their z-scores across cells), with confidence interval and 
+#' significance, and the corresponding reliability.
+#'
 #' @param z A matrix of z-scores (with motifs as rows), or a 
 #'   `SummaziedExperiment` object with such a matrix in assay `z` (as produced
 #'   e.g. by \code{\link{computeDeviationsAnalytic}}).
@@ -13,10 +17,20 @@
 #' @param n The number of bootstrap samples. Ignored unless 
 #'   `method="bootstrap"`.
 #'
+#' @details
+#' Since the z-scores are standardized by their (analytic) noise standard
+#' deviation, a variability of 1 means that the motif only varies across cells
+#' because of noise, and `var.pval` tests this null hypothesis. The `reliability`
+#' is the corresponding proportion of the variance of the scores across cells 
+#' that is not noise, `1-1/variability^2` (set to 0 when the variability is 
+#' below 1). It relies on the analytic noise variance being accurate, and 
+#' gives every cell the same weight. See \code{\link{estimateNoiseKappa}} for 
+#' an empirical estimate.
+#'
 #' @returns A data.frame containing the variability and confidence interval 
-#'   around it, as well as significance, for each motif. If `z` is a 
-#'   `SummarizedExperiment`, the data.frame will be stored in `rowData(z)`.
-#' @seealso \code{\link{computeMotifReliability}}.
+#'   around it, as well as significance and reliability, for each motif. If `z`
+#'   is a `SummarizedExperiment`, the data.frame will be stored in `rowData(z)`.
+#' @seealso \code{\link{estimateNoiseKappa}}.
 #' @export
 #' @importFrom stats qchisq
 #' @importFrom matrixStats rowSds rowQuantiles
@@ -31,15 +45,24 @@ computeMotifVariability <- function(z, confInt=0.95, n=100,
   stopifnot(length(confInt)==1 && confInt>0 && confInt<1)
 
   if(.isSElike(z)){
-    out <- computeMotifVariability(assay(z, "z"), confInt, method)
+    out <- computeMotifVariability(assay(z, "z"), confInt=confInt, n=n, method=method)
     rowData(z) <- cbind(
       rowData(z)[,setdiff(colnames(rowData(z)),colnames(out)),drop=FALSE], out)
     return(z)
   }
   
-  if(method=="bonett") return(computeBonettVariability(z, confInt))
-  if(method=="bootstrap") return(computeBootstrapVariability(z, confInt, n=n))
-  
+  out <- if(method=="bonett"){
+    computeBonettVariability(z, confInt)
+  }else if(method=="bootstrap"){
+    computeBootstrapVariability(z, confInt, n=n)
+  }else{
+    computeNormalVariability(z, confInt)
+  }
+  out$reliability <- pmax(0, 1-1/out$variability^2)
+  out
+}
+
+computeNormalVariability <- function(z, confInt=0.95){
   df <- ncol(z)-1L
   variability <- matrixStats::rowSds(as.matrix(z))
   vars <- variability^2

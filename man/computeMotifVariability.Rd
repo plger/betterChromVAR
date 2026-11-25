@@ -30,11 +30,23 @@ kurtosis (based on Bonett, Computational Statistics & Data Analysis, 2006).
 }
 \value{
 A data.frame containing the variability and confidence interval
-around it, as well as significance, for each motif. If \code{z} is a
-\code{SummarizedExperiment}, the data.frame will be stored in \code{rowData(z)}.
+around it, as well as significance and reliability, for each motif. If \code{z}
+is a \code{SummarizedExperiment}, the data.frame will be stored in \code{rowData(z)}.
 }
 \description{
-computeMotifVariability
+Computes the variability of the single-cell motif scores (the standard
+deviation of their z-scores across cells), with confidence interval and
+significance, and the corresponding reliability.
+}
+\details{
+Since the z-scores are standardized by their (analytic) noise standard
+deviation, a variability of 1 means that the motif only varies across cells
+because of noise, and \code{var.pval} tests this null hypothesis. The \code{reliability}
+is the corresponding proportion of the variance of the scores across cells
+that is not noise, \code{1-1/variability^2} (set to 0 when the variability is
+below 1). It relies on the analytic noise variance being accurate, and
+gives every cell the same weight. See \code{\link{estimateNoiseKappa}} for
+an empirical estimate.
 }
 \examples{
 # we generate random z-scores:
@@ -42,5 +54,5 @@ z <- matrix(rnorm(mean=rnorm(10), sd=runif(10, max=2), 200), nrow=10)
 var <- computeMotifVariability
 }
 \seealso{
-\code{\link{computeMotifReliability}}.
+\code{\link{estimateNoiseKappa}}.
 }

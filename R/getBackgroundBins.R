@@ -20,12 +20,15 @@
 #'   number of bins for, in order: enrichment, GC and fragment length. By 
 #'   default, `bs=50` if `flbias` is not provided (mimicking chromVAR), and
 #'   `bs=c(30, 30, 6)` if it is.
-#' @param maxShare Optional maximum share that a peak can have in the 
-#'   expectation of its own background. If not NULL, the width of the kernel is
-#'   increased (up to `maxWidth` times `w`) for the bins that would otherwise 
-#'   exceed it, so that sparsely-populated bins draw more from their neighbors.
+#' @param minCount Minimum number of peaks that the background of a bin should
+#'   draw from. The width of the kernel of the bins that contain fewer than 
+#'   `minCount` peaks is increased until it is reached, or up to 
+#'   `maxWidthFactor` times `w`), so that sparsely-populated bins draw more 
+#'   from their neighbors. Use `minCount=NULL` (or 0) to reproduce the 
+#'   traditional chromVAR sampling.
 #' @param maxWidthFactor The maximum factor by which `w` can be multiplied when 
-#'   `maxShare` is used.
+#'   `minCount` is used.
+#' @param maxShare Deprecated and ignored; use `minCount` instead.
 #' @param pseudo Optional pseudocount to be added. This should not be needed 
 #'   with standard workflows.
 #' @param tol The tolerance of the balancing of the bin-to-bin probabilities 
@@ -62,8 +65,11 @@
 #' counts_se <- getDummyData()$counts
 #' background <- getBackgroundBins(counts_se)
 getBackgroundBins <- function(x, bias=NULL, flbias=NULL, w=0.1, bs=NULL,
-                              maxShare=0.1, maxWidthFactor=4, pseudo=0, 
-                              tol=1e-3, verbose=TRUE){
+                              minCount=10, maxWidthFactor=4, pseudo=0, 
+                              tol=1e-3, verbose=TRUE, maxShare=NULL){
+  if(!is.null(maxShare))
+    warning("`maxShare` is deprecated and ignored; use `minCount` instead.",
+            call.=FALSE)
   if(.isSElike(x)){
     if(is.null(bias)) bias <- rowData(x)$bias
     if(is.null(flbias)) flbias <- rowData(x)$flbias
@@ -137,10 +143,10 @@ getBackgroundBins <- function(x, bias=NULL, flbias=NULL, w=0.1, bs=NULL,
   D <- as.matrix(dist(bin_data))
   W <- dnorm(D, 0, w)
   
-  if(!is.null(maxShare)){
-    stopifnot(length(maxShare)==1 && maxShare>0 && maxShare<1)
+  if(!is.null(minCount) && minCount>0){
+    stopifnot(is.numeric(minCount) && length(minCount)==1)
     stopifnot(length(maxWidthFactor)==1 && maxWidthFactor>=1)
-    W <- .adaptiveKernel(W, D, w, maxShare, maxWidthFactor, x, peak2bin)
+    W <- .adaptiveKernel(W, D, w, minCount, maxWidthFactor, peak2bin)
   }
   
   normalizer <- as.vector(W %*% binDensity)
@@ -239,21 +245,15 @@ sampleBackgroundPeaks <- function(background, niterations=50){
 
 
 
-# Widens the gaussian kernel of the bins where a peak would otherwise make up
-# more than `maxShare` of the expectation of its own background.
-.adaptiveKernel <- function(W, D, w, maxShare, maxWidth, x, peak2bin){
-  B <- nrow(W)
-  fb <- factor(peak2bin, levels=seq_len(B))
-  ebin <- as.numeric(tapply(x, fb, sum))
-  emax <- as.numeric(tapply(x, fb, max))
-  ebin[is.na(ebin)] <- 0
-  emax[is.na(emax)] <- 0
-  share <- (diag(W) * emax) / as.vector(W %*% ebin)
-  todo <- which(emax>0 & share > maxShare)
-  for(u in todo){
+# Widens the gaussian kernel of the bins containing fewer than `minCount` peaks
+# (in steps of 25%, up to `maxWidth`) until the kernel-weighted number of peaks,
+# sum_v n_v W_uv / W_uu, reaches `minCount`.
+.adaptiveKernel <- function(W, D, w, minCount, maxWidth, peak2bin){
+  n <- tabulate(peak2bin, nbins=nrow(W))
+  for(u in which(n>0 & n<minCount)){
     m <- 1
     Wu <- W[u,]
-    while(Wu[u]*emax[u]/sum(Wu*ebin) > maxShare && m < maxWidth){
+    while(sum(Wu*n)/Wu[u] < minCount && m < maxWidth){
       m <- min(m*1.25, maxWidth)
       Wu <- dnorm(D[u,], 0, w*m)
     }

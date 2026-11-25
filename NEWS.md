@@ -1,11 +1,22 @@
+# betterChromVAR 1.99.4
+
+## Changes
+* Simplified the adaptive kernel width of `getBackgroundBins()` using a minimum
+  peak counts (the `maxShare` argument is deprecated, and `minCount` produces 
+  virtually the same results).
+
+## New features
+* `CVnorm()` now warns when the experimental groups explain much of the bin-level
+  bias factors.
+* Reimplementation of `GCQN()` for convenience.
+* `testBiasDimensions()`: cross-validated test of the importance of the different
+  bias dimensions (accessibility, GC, fragment-length) for (pseudo)bulk data, to
+  guide the choice of normalization (GC-only vs `CVnorm()`).
+
+
 # betterChromVAR 1.99.1
 
 ## New features
-* The background expectation of each motif is now rescaled so that its global 
-  expectation equals that of the motif's peaks (neglible effect in single-cell
-  data, better agreement with chromVAR in bulk data).
-* Motif interaction analysis, including functions moved from `weightedMotifAccess`
-  (and improved), as well as peak-level functions and a vignette.
 * `fitDeviations()` (moved from `weightedMotifAccess`)
 * `peakLevelMotifTests()` and `stepwisePeakLevelMotifTests()` as peak-logFC-based
   alternative to the analysis of deviations.

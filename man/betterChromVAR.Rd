@@ -85,9 +85,14 @@ dev
 # dev <- computeDeviationsAnalytic(counts, bg, motifMatches)
 }
 \references{
-Schep A.N., Wu B., Buenrostro J.D., Greenleaf W.J. (2017) chromVAR:
+\itemize{
+\item Schep A.N., Wu B., Buenrostro J.D., Greenleaf W.J. (2017) chromVAR:
 inferring transcription-factor-associated accessibility from
 single-cell epigenomic data, Nature Methods, doi: 10.1038/nmeth.4401
+\item Wang J, Sonder E, Domcke S, Robinson M, Germain P (2026). Addressing
+technical variations in ATAC-seq data and improving motif accessibility
+analyses. bioRxiv, doi: 10.64898/2026.08.21.746151
+}
 }
 \author{
 Pierre-Luc Germain

@@ -57,8 +57,8 @@ test_that("the bin-to-bin probabilities are balanced", {
   s0 <- sums(getBins(tol=NULL))
   expect_lt(min(s0$cols), 0.5)
   # also without adaptive kernel
-  expect_lt(min(sums(getBins(maxShare=NULL, tol=NULL))$cols), 0.8)
-  s <- sums(getBins(maxShare=NULL))
+  expect_lt(min(sums(getBins(minCount=NULL, tol=NULL))$cols), 0.8)
+  s <- sums(getBins(minCount=NULL))
   expect_lt(max(abs(s$rows-1)), 1e-4)
   expect_lt(max(abs(s$cols-1)), 1e-3)
   expect_error(getBins(tol=-1))
@@ -93,4 +93,27 @@ test_that("the balancing and the ratio correction remove the bias of random sets
   # when the bins are not balanced
   expect_lt(abs(mean(dev(tol=NULL))), 0.002)
   expect_lt(abs(mean(dev())), 0.002)
+})
+
+
+test_that("minCount widens the kernel of sparse bins only, and maxShare is deprecated", {
+  counts <- simulateCounts(200, 4000, 6)
+  bias <- runif(nrow(counts))
+  getBins <- function(...) getBackgroundBins(counts, bias=bias, bs=20, tol=NULL,
+                                             verbose=FALSE, ...)
+  b0 <- getBins(minCount=NULL)
+  b1 <- getBins(minCount=10)
+  n <- b0@binDensity
+  changed <- Matrix::rowSums(abs(b0@binBinProbs-b1@binBinProbs)) > 1e-12
+  expect_true(any(changed))
+  # only the occupied bins with fewer than minCount peaks are modified
+  expect_true(all(n[changed] > 0 & n[changed] < 10))
+  expect_identical(b0@peak2bin, b1@peak2bin)
+  # widening increases the effective background size of the changed bins
+  ess <- function(b) 1/as.numeric((b@binBinProbs*b@binBinProbs) %*% b@binDensity)
+  expect_true(all(ess(b1)[changed] >= ess(b0)[changed]))
+  # minCount=0 is the same as NULL
+  expect_equal(getBins(minCount=0)@binBinProbs, b0@binBinProbs)
+  expect_warning(bm <- getBins(maxShare=0.1), "deprecated")
+  expect_equal(bm@binBinProbs, b1@binBinProbs)
 })
