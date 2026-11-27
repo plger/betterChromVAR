@@ -82,7 +82,7 @@ NULL).}
 A data.frame with one row per motif and the columns \code{kappa} (to be
 given to \code{\link{smoothDeviationsKNN}}), \code{reliability} and
 \code{reliability.se} (a jackknife estimate of the standard error of the
-variability).
+reliability).
 }
 \description{
 Empirically calibrates, for each motif, the analytic estimate of the noise

@@ -235,27 +235,6 @@ test_that("smoothDeviationsKNN handles undefined noise values", {
   expect_true(all(is.finite(assay(sm, "smoothed.z"))))
 })
 
-test_that("computeMotifVariability gives the reliability", {
-  set.seed(3)
-  nC <- 400
-  nM <- 4
-  # the first motif varies between cells (sd 0.5), the others do not
-  sdn <- 0.4
-  truth <- matrix(0, nM, nC)
-  truth[1,] <- rnorm(nC, sd=0.5)
-  dv <- truth + matrix(rnorm(nM*nC, sd=sdn), nM, nC)
-  rownames(dv) <- paste0("m", 1:nM)
-  r <- computeMotifVariability(dv/sdn)
-  expect_true(all(r$reliability>=0 & r$reliability<=1))
-  expect_equal(r$reliability, pmax(0, 1-1/r$variability^2))
-  # true reliability: 0.25/(0.25+0.16)
-  expect_equal(r$reliability[1], 0.25/(0.25+sdn^2), tolerance=0.1)
-  expect_lt(max(r$reliability[-1]), 0.2)
-  # is also in the output of the main functions
-  dev <- betterChromVAR(counts, motifMatches)
-  expect_true("reliability" %in% colnames(rowData(dev)))
-})
-
 test_that("computeDeviationsWeighted is consistent with the unweighted version", {
   bg <- computeBackgrounds(counts, getBackgroundBins(counts, verbose=FALSE))
   mc <- as.matrix(Matrix::t(motifMatches) %*% assay(counts))
@@ -301,6 +280,6 @@ test_that("the significance of the variability is calibrated and powerful", {
   expect_true(all(rel1$var.adjPval[1:40] < 1e-3))
   expect_gt(mean(rel1$var.adjPval[41:60] < 0.05), 0.2)
   expect_lt(mean(rel1$var.adjPval[-(1:60)] < 0.05), 0.02)
-  expect_gt(mean(rel1$reliability[1:20]), mean(rel1$reliability[21:40]))
-  expect_gt(mean(rel1$reliability[21:40]), mean(rel1$reliability[41:60]))
+  expect_gt(mean(rel1$variability[1:20]), mean(rel1$variability[21:40]))
+  expect_gt(mean(rel1$variability[21:40]), mean(rel1$variability[41:60]))
 })

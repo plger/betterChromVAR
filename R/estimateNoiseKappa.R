@@ -67,7 +67,7 @@
 #' @return A data.frame with one row per motif and the columns `kappa` (to be
 #'   given to \code{\link{smoothDeviationsKNN}}), `reliability` and
 #'   `reliability.se` (a jackknife estimate of the standard error of the 
-#'   variability).
+#'   reliability).
 #'
 #' @seealso \code{\link{smoothDeviationsKNN}}
 #' @importFrom BiocParallel bplapply SerialParam MulticoreParam bpnworkers

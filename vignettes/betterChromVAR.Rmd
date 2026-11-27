@@ -263,14 +263,55 @@ quite likely that better performance for this step would be obtained
 using for instance using the `aggregateAcrossCells()` function of the
 `r Biocpkg("scrapper")` package.
 
+## Motif variability and reliability
+
+The variability of each motif across the dataset is stored in the
+rowData of the output of `betterChromVAR()` :
+
+```{r variability}
+rowData(dev)
+```
+
+This is comparable to the variability produced by the original `chromVAR`,
+however the confidence intervals are analytic estimates. While these are 
+generally good enough, it is also possible to obtain bootstrap confidence 
+intervals (as in the original approach) through the 
+`computeMotifVariability()` function.
+
+An alternative way to assess how useful or informative motifs are is how 
+reliably they capture biological variation. This can be estimated by the 
+proportion of their variance across cells that is not attributable to sampling 
+noise. The `estimateNoiseKappa()` function can be used to assess this:
+
+```{r reliability}
+motifRel <- estimateNoiseKappa(counts, annotations=motifMatches, background=bg)
+head(motifRel)
+```
+
+While in practice reliability and variability of a motif are correlated, they
+do not track exactly the same thing, even in this toy example:
+
+```{r motifComparison}
+cor(rowData(dev)$variability, motifRel$reliability)
+```
+
+In single-cell data, where most of the background variability is due to 
+measurement noise, the two are redundant (reliability is roughly 
+`1-1/variability^2`). In bulk (or pseudo-bulk) data, however, the two can be
+quite different. Two motifs can have the same reliability while having very 
+different variability (e.g. a reliably quantified motif accessibility that does 
+not vary much), or the converse. Both are therefore relevant information in 
+selecting useful motifs at the bulk level.
+
+
 # Decorrelating motifs that share peaks
 
 Since peaks contain multiple motifs, a change in the accessibility of the 
 binding sites of one factor also affects the scores of the motifs that tend to 
 be found in the same peaks, and this is especially strong for motifs from the 
 same family. The `ridge` argument can be used to reduce this: the excess counts 
-of the motifs are then deconvoluted using the overlap between motifs with a ridge
-penalty:
+of the motifs are then deconvoluted using the overlap between motifs with a 
+ridge penalty:
 
 ```{r ridge}
 dev2 <- betterChromVAR(counts, motifMatches, ridge=2)
